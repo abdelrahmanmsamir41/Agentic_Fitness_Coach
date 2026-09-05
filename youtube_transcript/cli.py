@@ -36,3 +36,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# python -m youtube_transcript dQw4w9WgXcQ 
+# python -m youtube_transcript dQw4w9WgXcQ srt
+# python -m youtube_transcript dQw4w9WgXcQ vtt

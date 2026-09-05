@@ -11,3 +11,5 @@ wheels/
 
 Splits
 splits_extracted
+
+.env
