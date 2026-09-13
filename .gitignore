@@ -8,8 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+.venv-paddle
 
 Splits
 splits_extracted
-
+transcripts
 .env
+
+mineru_output
+output
+output-api
+output-api-PP-StructureV3
+.mds_output
+ingestion_output

@@ -3,10 +3,8 @@ import re
 import sys
 import fitz  # PyMuPDF
 
-from recombine_split_pdf import content_pairs, merged_lines, recombine
-
-PDF_PATH = r"C:\Users\apder\Music\938632224-BelghamdiSplit-Upper-Lower-4-Days.pdf"
-OUT_PATH = r"C:\Users\apder\Choose-Your-Trainer\BelghamdiSplit-Upper-Lower-4-Days.md"
+PDF_PATH = r"C:\Users\apder\Choose-Your-Trainer\Splits\shady_splits\shadad split 2.0 (optimized version).pdf"
+OUT_PATH = r"C:\Users\apder\Choose-Your-Trainer\shadad split 2.0.md"
 
 # PyMuPDF pulls Arabic glyph runs in visual (already-mirrored) order, so pure-Arabic
 # spans come out character-reversed. Reversing each contiguous Arabic-script run
@@ -22,13 +20,6 @@ def fix_rtl(s):
 
 def extract(pdf_path, out_path):
     doc = fitz.open(pdf_path)
-    orig_doc, pairs = None, content_pairs(doc)
-    if pairs is not None:
-        orig_doc = doc  # keep the pre-merge pages around for line-accurate text
-        fixed_path = recombine(pdf_path)
-        print(f"Detected a left/right-split PDF; recombined to {fixed_path}")
-        pdf_path = fixed_path
-        doc = fitz.open(pdf_path)
     lines = [f"# {doc.metadata.get('title') or 'Extracted PDF Data'}\n"]
     lines.append(f"Source: `{pdf_path}`  \nPages: {doc.page_count}\n")
 
@@ -36,13 +27,7 @@ def extract(pdf_path, out_path):
         pno = page.number + 1
         lines.append(f"\n---\n\n## Page {pno}\n")
 
-        page_lines = None
-        if orig_doc is not None:
-            left_pno, right_pno = pairs[page.number]
-            page_lines = merged_lines(orig_doc[left_pno], orig_doc[right_pno])
-            text = "\n".join(t for _, t in page_lines).strip()
-        else:
-            text = page.get_text("text").strip()
+        text = page.get_text("text").strip()
         if text:
             lines.append("### Text\n")
             lines.append("```\n" + text + "\n```\n")
@@ -74,8 +59,6 @@ def extract(pdf_path, out_path):
             lines.append("")
 
     doc.close()
-    if orig_doc is not None:
-        orig_doc.close()
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -92,6 +75,6 @@ def _demo():
 
 if __name__ == "__main__":
     _demo()
-    pdf = r"Splits\hossam_mansour_splits\Agonist antagonist advanced(2).pdf"
-    out = r"splits_extracted\Agonist antagonist advanced(2).md"
+    pdf = PDF_PATH
+    out = OUT_PATH
     extract(pdf, out)

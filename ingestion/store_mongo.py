@@ -1,0 +1,53 @@
+"""Local MongoDB storage: document manifests (provenance), parent sections
+(full context for retrieval-time expansion), and extracted entities.
+"""
+import os
+
+from dotenv import load_dotenv
+from pymongo import AsyncMongoClient
+
+load_dotenv()
+
+_client = None
+
+
+def _db():
+    # pymongo's own native async driver, not motor -- motor is now in its
+    # deprecation window (deprecated May 2026) and MongoDB itself recommends
+    # this as the direct replacement: same API, better latency/throughput
+    # since it runs on asyncio directly instead of motor's thread-pool shim.
+    global _client
+    if _client is None:
+        _client = AsyncMongoClient(os.environ.get("MONGODB_URL", "mongodb://localhost:27017/"))
+    return _client["choose_your_trainer"]
+
+
+async def mark_previous_versions_inactive(client_id, document_type):
+    await _db()["documents"].update_many(
+        {"client_id": client_id, "document_type": document_type, "active": True},
+        {"$set": {"active": False}},
+    )
+
+
+async def save_document_manifest(manifest):
+    await _db()["documents"].insert_one(dict(manifest))
+
+
+async def save_parents_and_entities(parents, leaf_chunks):
+    if parents:
+        await _db()["parents"].insert_many([dict(p) for p in parents])
+    if leaf_chunks:
+        await _db()["entities"].insert_many([dict(c) for c in leaf_chunks])
+
+
+async def get_parent(parent_chunk_id):
+    return await _db()["parents"].find_one({"parent_chunk_id": parent_chunk_id}, {"_id": 0})
+
+
+def _demo():
+    assert callable(_db)
+    print("store_mongo self-check passed (no network call)")
+
+
+if __name__ == "__main__":
+    _demo()
