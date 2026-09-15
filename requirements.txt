@@ -1,2 +1,11 @@
 pymupdf
 youtube-transcript-api
+python-dotenv
+requests
+httpx
+qdrant_client
+pydantic
+langchain_huggingface
+sentence-transformers
+pymongo
+langchain_google_genai

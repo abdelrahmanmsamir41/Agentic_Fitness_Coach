@@ -3,7 +3,7 @@ import re
 import sys
 import fitz  # PyMuPDF
 
-PDF_PATH = r"C:\Users\apder\Choose-Your-Trainer\Splits\shady_splits\shadad split 2.0 (optimized version).pdf"
+PDF_PATH = r"Splits\shady_splits\W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf"
 OUT_PATH = r"C:\Users\apder\Choose-Your-Trainer\shadad split 2.0.md"
 
 # PyMuPDF pulls Arabic glyph runs in visual (already-mirrored) order, so pure-Arabic
@@ -25,30 +25,6 @@ def extract(pdf_path, out_path):
 
     for page in doc:
         pno = page.number + 1
-        lines.append(f"\n---\n\n## Page {pno}\n")
-
-        text = page.get_text("text").strip()
-        if text:
-            lines.append("### Text\n")
-            lines.append("```\n" + text + "\n```\n")
-        else:
-            lines.append("_No text on this page._\n")
-
-        tables = page.find_tables()
-        for i, table in enumerate(tables.tables, start=1):
-            rows = table.extract()
-            if not rows:
-                continue
-            lines.append(f"\n### Table {i} (page {pno})\n")
-            header, *body = rows
-            header = [fix_rtl(str(c)) if c is not None else "" for c in header]
-            lines.append("| " + " | ".join(header) + " |")
-            lines.append("|" + "|".join(["---"] * len(header)) + "|")
-            for row in body:
-                row = [fix_rtl(str(c)) if c is not None else "" for c in row]
-                lines.append("| " + " | ".join(row) + " |")
-            lines.append("")
-
         links = [l for l in page.get_links() if l.get("uri")]
         if links:
             lines.append(f"\n### Links (page {pno})\n")

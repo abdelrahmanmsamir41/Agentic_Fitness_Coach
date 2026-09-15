@@ -22,6 +22,10 @@ def extract_links(pdf_path):
         links = [l for l in page.get_links() if l.get("uri")]
         if not links:
             continue
+        # get_links() follows the PDF's /Annots order, not necessarily reading
+        # order -- sort top-to-bottom/left-to-right so link order matches the
+        # rows/paragraphs a reader (or the LLM) would associate them with.
+        links.sort(key=lambda l: (round(l["from"].y0), l["from"].x0))
         entries = []
         for l in links:
             anchor_text = fix_rtl(" ".join(page.get_textbox(l["from"]).split())) or "(no visible text)"

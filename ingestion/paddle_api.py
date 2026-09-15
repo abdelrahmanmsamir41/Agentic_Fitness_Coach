@@ -30,29 +30,49 @@ def _token():
     return token
 
 
+async def _request(client, method, *args, **kwargs):
+    try:
+        resp = await client.request(method, *args, **kwargs)
+        resp.raise_for_status()
+        return resp
+    except httpx.ConnectError as e:
+        raise RuntimeError(f"PaddleOCR-VL connection error -- check internet or API URL: {e}") from e
+    except httpx.TimeoutException as e:
+        raise RuntimeError(f"PaddleOCR-VL request timed out: {e}") from e
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"PaddleOCR-VL HTTP error {e.response.status_code}: {e.response.text}") from e
+    except httpx.RequestError as e:
+        raise RuntimeError(f"PaddleOCR-VL request failed: {e}") from e
+
+
 async def _submit(client, pdf_path):
     headers = {"Authorization": f"bearer {_token()}"}
     data = {
         "model": MODEL,
-        "optionalPayload": '{"useDocOrientationClassify": false, "useDocUnwarping": false, "useChartRecognition": false}',
+        "optionalPayload": {"useDocOrientationClassify": False, "useDocUnwarping": False, "useChartRecognition": False},
     }
     with open(pdf_path, "rb") as f:
+        print(f"🐌 Processing file: {pdf_path}")
         files = {"file": (Path(pdf_path).name, f, "application/pdf")}
-        resp = await client.post(JOB_URL, headers=headers, data=data, files=files)
-    resp.raise_for_status()
-    return resp.json()["data"]["jobId"]
+        resp = await _request(client, "POST", JOB_URL, headers=headers, data=data, files=files)
+    job_id = resp.json()["data"]["jobId"]
+    print(f"✅ OCR request submitted, job id: {job_id}")
+    return job_id
 
 
 async def _poll(client, job_id):
     headers = {"Authorization": f"bearer {_token()}"}
     while True:
-        resp = await client.get(f"{JOB_URL}/{job_id}", headers=headers)
-        resp.raise_for_status()
-        state = resp.json()["data"]["state"]
+        resp = await _request(client, "GET", f"{JOB_URL}/{job_id}", headers=headers)
+        data = resp.json()["data"]
+        state = data["state"]
         if state == "done":
-            return resp.json()["data"]["resultUrl"]["jsonUrl"]
+            print(f"✅ job {job_id} done, extracted {data['extractProgress']['extractedPages']} pages")
+            return data["resultUrl"]["jsonUrl"]
         if state == "failed":
-            raise RuntimeError(f"PaddleOCR-VL job failed: {resp.json()['data'].get('errorMsg')}")
+            raise RuntimeError(f"PaddleOCR-VL job failed: {data.get('errorMsg')}")
+        if state == "running" and "extractProgress" in data:
+            print(f"... running, page {data['extractProgress']['extractedPages']}/{data['extractProgress']['totalPages']}")
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
@@ -63,8 +83,7 @@ async def parse_pdf(pdf_path):
     async with httpx.AsyncClient(timeout=120) as client:
         job_id = await _submit(client, pdf_path)
         jsonl_url = await _poll(client, job_id)
-        jsonl_resp = await client.get(jsonl_url)
-    jsonl_resp.raise_for_status()
+        jsonl_resp = await _request(client, "GET", jsonl_url)
 
     jsonl_text = jsonl_resp.content.decode("utf-8")
 
@@ -77,6 +96,7 @@ async def parse_pdf(pdf_path):
         for res in result["layoutParsingResults"]:
             text = res.get("markdown", {}).get("text", "")
             pages.append({"page_index": len(pages), "markdown": clean.strip_noise(text)})
+            print(f"📦 parsed page {len(pages)}")
     return pages
 
 
