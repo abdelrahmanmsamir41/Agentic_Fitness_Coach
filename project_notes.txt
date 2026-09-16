@@ -1,0 +1,48 @@
+
+i setted d4  as a source of reference to excercises to give them more information for making retrieval more better and increase the accuracy, i wanat just to convert it to json and  make the logic that relates each excercise extracted correctly to the json (you should revise all the extraction process to ensure exercises are extracted correct with all other content in the pdf ), then handle the classification of each page using the promt you made.
+
+--- i could make a schema for each set of somethings i want to extract from anything in the pdf if founf and tell the llm to fill them out and leave the rest with null
+------you you should start actually makign the schema you want for each segment you want to extract from the .md ( you can go through wach page and determine what segments could be extracted from it with their fields), also you should know that mre than one segement could be related but in another day so mention it when making the prompt
+------ you should put in concideration  changes you made in preprocessing , actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
+------ also you shopuld know where these extracted segments will be saved and what features or what you will do with them later 
+
+------ my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
+
+
+
+also you faster the relation process by some of words if mentioned in the query , but we will do this later,  like back, chest , or what is written below.
+
+i want to convert db into dumbbell ( Done )
+make if exercise mentioned (machine, cable, dumbell ) to put them as a Equipment
+make an llm as a judje to be certain of features of an exercise 
+
+include in the prmpt when processing the ocr output , that some timesextracted text under a specific heading didnt got under it directly but under another heading 
+
+make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
+
+dont forget to handle more then just pdfs 
+
+you could make a l;ibrary for abbreviations in the gym insdustry.
+
+i installed a library called ytdlp fetches original transcription with all autogenerates oines by youtube , and also extract the comments 
+i want to add a feature that recommend a specific video url , or a part in a vlog for the query
+put in consideration to enrich youtube links with metadata 
+
+dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 
+
+
+
+--- consider using docling for handling html tables ( done )
+
+include in the prompt also these information TABLE[type=mapping] — for a 2-column table with no real header (like the training-split table: chest & back | DAY 1, LEGS | DAY 2...). Every row is just a label: value pair, printed straight through with no header line at all:
+
+TABLE[type=mapping]
+chest & back: DAY 1
+LEGS: DAY 2
+TABLE[type=data] — for any table with 3+ columns (the actual exercise tables: Workout Name / Sets / Reps / RIR / Rest / etc.). The first row is treated as the header, its cells get slugified into columns: ... printed once, then every remaining row is just pipe-separated values:
+
+
+TABLE[type=data]
+columns: exercise, reps, rest
+
+Squat | 10 | 2 min
