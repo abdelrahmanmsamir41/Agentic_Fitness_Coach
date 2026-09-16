@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-import clean
+import preprocess
 
 load_dotenv()
 
@@ -95,7 +95,7 @@ async def parse_pdf(pdf_path):
         result = json.loads(line)["result"]
         for res in result["layoutParsingResults"]:
             text = res.get("markdown", {}).get("text", "")
-            pages.append({"page_index": len(pages), "markdown": clean.strip_noise(text)})
+            pages.append({"page_index": len(pages), "markdown": preprocess.strip_noise(text)})
             print(f"📦 parsed page {len(pages)}")
     return pages
 

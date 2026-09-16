@@ -19,8 +19,9 @@ _URL = re.compile(r"https?://\S+")
 
 class TrainingEntity(BaseModel):
     exercise: str
-    sets: Optional[str] = None
+    working_sets: Optional[str] = None
     reps: Optional[str] = None
+    warmup_sets: Optional[str] = None
     rir: Optional[str] = None
     rest: Optional[str] = None
     instructions: Optional[str] = None

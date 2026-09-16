@@ -28,7 +28,7 @@ def extract_links(pdf_path):
         links.sort(key=lambda l: (round(l["from"].y0), l["from"].x0))
         entries = []
         for l in links:
-            anchor_text = fix_rtl(" ".join(page.get_textbox(l["from"]).split())) or "(no visible text)"
+            anchor_text = fix_rtl(" ".join(page.get_textbox(l["from"]).split())) or "None"
             entries.append({"url": l["uri"], "anchor_text": anchor_text})
         by_page[page.number] = entries
     doc.close()

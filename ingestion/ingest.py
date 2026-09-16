@@ -61,10 +61,10 @@ async def _parse_and_link(doc_id, pdf_path):
     there's no reason to block one on the other."""
     print(f"[{doc_id}] parsing via PaddleOCR-VL + extracting links via PyMuPDF...")
     pages, links_by_page = await asyncio.gather(
-        paddle_api.parse_pdf(str(pdf_path)),
-        asyncio.to_thread(links.extract_links, str(pdf_path)),
+        paddle_api.parse_pdf(str(pdf_path)),  # return list of {"page_index": int, "markdown": str}
+        asyncio.to_thread(links.extract_links, str(pdf_path)), # return a dict of {page_index:[{"url": l["uri"], "anchor_text": anchor_text},{...},...]}
     )
-    return links.merge_links_into_pages(pages, links_by_page)
+    return links.merge_links_into_pages(pages, links_by_page)  # return list of {"page_index": int, "markdown": str} with links merged into markdown
 
 
 async def _process_batch(doc_id, document_type, common, batch_start, batch):

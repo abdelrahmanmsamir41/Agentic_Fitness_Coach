@@ -9,3 +9,4 @@ langchain_huggingface
 sentence-transformers
 pymongo
 langchain_google_genai
+yt-dlp

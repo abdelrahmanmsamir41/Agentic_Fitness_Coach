@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import json
 import sys
 
 from .exceptions import TranscriptError
 from .fetcher import TranscriptFetcher
 from .formatters import OUTPUT_FORMATS
+from .languages import list_languages
 from .video_id import extract_video_id
 
 
 def main() -> None:
     if len(sys.argv) not in (2, 3):
-        print("Usage: python -m youtube_transcript <youtube_url_or_video_id> [text|srt|vtt]")
+        print("Usage: python -m youtube_transcript <youtube_url_or_video_id> [text|srt|vtt|--list-langs]")
         raise SystemExit(1)
+
+    if len(sys.argv) == 3 and sys.argv[2] == "--list-langs":
+        print(json.dumps(list_languages(sys.argv[1]), indent=2))
+        return
 
     fmt = sys.argv[2] if len(sys.argv) == 3 else "text"
     if fmt not in OUTPUT_FORMATS:
@@ -37,6 +43,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# python -m youtube_transcript dQw4w9WgXcQ 
+# python -m youtube_transcript dQw4w9WgXcQ
 # python -m youtube_transcript dQw4w9WgXcQ srt
 # python -m youtube_transcript dQw4w9WgXcQ vtt
+# python -m youtube_transcript dQw4w9WgXcQ --list-langs
