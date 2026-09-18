@@ -1,4 +1,6 @@
 pymupdf
+beautifulsoup4
+lxml
 youtube-transcript-api
 python-dotenv
 requests
