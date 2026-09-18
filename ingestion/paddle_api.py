@@ -49,7 +49,7 @@ async def _submit(client, pdf_path):
     headers = {"Authorization": f"bearer {_token()}"}
     data = {
         "model": MODEL,
-        "optionalPayload": {"useDocOrientationClassify": False, "useDocUnwarping": False, "useChartRecognition": False},
+        "optionalPayload": json.dumps({"useDocOrientationClassify": False, "useDocUnwarping": False, "useChartRecognition": False}),
     }
     with open(pdf_path, "rb") as f:
         print(f"🐌 Processing file: {pdf_path}")
@@ -62,17 +62,21 @@ async def _submit(client, pdf_path):
 
 async def _poll(client, job_id):
     headers = {"Authorization": f"bearer {_token()}"}
+    start = asyncio.get_event_loop().time()
     while True:
         resp = await _request(client, "GET", f"{JOB_URL}/{job_id}", headers=headers)
         data = resp.json()["data"]
         state = data["state"]
+        elapsed = int(asyncio.get_event_loop().time() - start)
         if state == "done":
-            print(f"✅ job {job_id} done, extracted {data['extractProgress']['extractedPages']} pages")
+            print(f"✅ job {job_id} done, extracted {data['extractProgress']['extractedPages']} pages ({elapsed}s)")
             return data["resultUrl"]["jsonUrl"]
         if state == "failed":
             raise RuntimeError(f"PaddleOCR-VL job failed: {data.get('errorMsg')}")
         if state == "running" and "extractProgress" in data:
-            print(f"... running, page {data['extractProgress']['extractedPages']}/{data['extractProgress']['totalPages']}")
+            print(f"... running, page {data['extractProgress']['extractedPages']}/{data['extractProgress']['totalPages']} ({elapsed}s)")
+        else:
+            print(f"... {state} ({elapsed}s)")
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 

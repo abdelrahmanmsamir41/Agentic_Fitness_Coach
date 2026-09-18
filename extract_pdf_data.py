@@ -1,7 +1,7 @@
 """Extract text, tables, and hyperlinks from a PDF into a Markdown file, page by page."""
 import re
 import sys
-import fitz  # PyMuPDF
+import pymupdf as fitz
 
 PDF_PATH = r"Splits\shady_splits\W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf"
 OUT_PATH = r"C:\Users\apder\Choose-Your-Trainer\shadad split 2.0.md"
