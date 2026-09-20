@@ -42,12 +42,3 @@ async def save_parents_and_entities(parents, leaf_chunks):
 
 async def get_parent(parent_chunk_id):
     return await _db()["parents"].find_one({"parent_chunk_id": parent_chunk_id}, {"_id": 0})
-
-
-def _demo():
-    assert callable(_db)
-    print("store_mongo self-check passed (no network call)")
-
-
-if __name__ == "__main__":
-    _demo()

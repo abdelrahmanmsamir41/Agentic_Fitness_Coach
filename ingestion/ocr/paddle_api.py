@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-import preprocess
+from . import preprocess
 
 load_dotenv()
 

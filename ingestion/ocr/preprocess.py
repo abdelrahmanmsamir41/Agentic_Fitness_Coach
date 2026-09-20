@@ -7,7 +7,7 @@ currency/duration normalization in that file doesn't apply to fitness plans.
 import html
 import re
 
-import tables
+from . import tables
 
 _IMG = re.compile(r"<div[^>]*>\s*<img[^>]*>\s*</div>|<img[^>]*>|!\[[^\]]*\]\([^)]*\)", re.DOTALL)
 _STYLE_BORDER_ATTR = re.compile(r"\s*(style|border)\s*=\s*(\"[^\"]*\"|'[^']*'|\S+)", re.DOTALL)

@@ -26,6 +26,7 @@ FILTER_FIELDS = {
     "client_id": PayloadSchemaType.KEYWORD,
     "active": PayloadSchemaType.BOOL,
     "day": PayloadSchemaType.KEYWORD,
+    "chunk_type": PayloadSchemaType.KEYWORD,
 }
 
 _client = None
@@ -90,15 +91,3 @@ async def search(query_text, top_k=5, filters=None):
 def _stable_id(chunk_id):
     import uuid
     return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
-
-
-def _demo():
-    a = _stable_id("doc1:day-2:lat-pulldown")
-    b = _stable_id("doc1:day-2:lat-pulldown")
-    c = _stable_id("doc1:day-2:row")
-    assert a == b and a != c
-    print("store_qdrant self-check passed (no network call)")
-
-
-if __name__ == "__main__":
-    _demo()
