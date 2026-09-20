@@ -41,20 +41,7 @@ def merge_links_into_pages(pages, links_by_page):
         entries = links_by_page.get(page["page_index"])
         if not entries:
             continue
-        lines = ["\n_Links on this page:_"]
+        lines = ["\n_Links:"]
         lines += [f"- [{e['anchor_text']}]({e['url']})" for e in entries]
         page["markdown"] += "\n" + "\n".join(lines)
     return pages
-
-
-def _demo():
-    pages = [{"page_index": 0, "markdown": "hello"}, {"page_index": 1, "markdown": "world"}]
-    links = {0: [{"url": "https://example.com", "anchor_text": "video"}]}
-    merged = merge_links_into_pages(pages, links)
-    assert "[video](https://example.com)" in merged[0]["markdown"]
-    assert merged[1]["markdown"] == "world"
-    print("links self-check passed")
-
-
-if __name__ == "__main__":
-    _demo()

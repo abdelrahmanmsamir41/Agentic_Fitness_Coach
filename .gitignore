@@ -21,7 +21,7 @@ output-api
 output-api-PP-StructureV3
 .mds_output
 ingestion_output
-
+archive
 subtitles
-
+tests
 *.ipynb

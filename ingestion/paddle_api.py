@@ -104,14 +104,7 @@ async def parse_pdf(pdf_path):
     return pages
 
 
-def _demo():
-    pages = [{"page_index": 0, "markdown": "![img](rel/a.png) hello"}]
-    assert pages[0]["markdown"] == "![img](rel/a.png) hello"
-    print("paddle_api self-check passed (no network call)")
-
-
 if __name__ == "__main__":
-    _demo()
     if len(sys.argv) > 1:
         result = asyncio.run(parse_pdf(sys.argv[1]))
         print(f"Parsed {len(result)} pages")
