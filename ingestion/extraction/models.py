@@ -5,23 +5,19 @@ from pydantic import BaseModel, Field
 
 
 class NutritionEntity(BaseModel):
-    meal: str
-    food: Optional[str] = None
-    quantity: Optional[str] = None
-    unit: Optional[str] = None
-    calories: Optional[str] = None
-    macros: Optional[str] = None
-    substitutions: Optional[str] = None
+    meal: str = Field(description="Meal name, e.g. \"Breakfast\"")
+    food: Optional[str] = Field(default=None, description="Food item name")
+    quantity: Optional[str] = Field(default=None, description="Amount, e.g. \"200\"")
+    unit: Optional[str] = Field(default=None, description="Unit for quantity, e.g. \"g\", \"cup\"")
+    calories: Optional[str] = Field(default=None, description="Calorie count")
+    macros: Optional[str] = Field(default=None, description="Macro breakdown, e.g. \"P40/C50/F10\"")
+    substitutions: Optional[str] = Field(default=None, description="Allowed substitute foods")
 
 
 class NutritionSectionResult(BaseModel):
-    # page_topic is model-inferred (e.g. "Breakfast", "Post-Workout Shake"),
-    # not lifted from a markdown heading -- a page's own OCR heading is
-    # unreliable (missing, or matching the wrong line among several), so the
-    # model infers it directly from the page's content instead.
-    page_topic: str
-    cleaned_text: str
-    entities: List[NutritionEntity]
+    page_topic: str = Field(description="Short label inferred from the page's own content, e.g. \"Breakfast\", \"Post-Workout Shake\" -- the page may have no heading of its own, so infer it from what's actually there")
+    cleaned_text: str = Field(description="Raw OCR text reconstructed into clean, readable Markdown prose")
+    entities: List[NutritionEntity] = Field(description="Meal entries extracted from the page")
 
 
 # --- Training-plan section categories -------------------------------------
@@ -37,54 +33,61 @@ SectionCategory = Literal[
 ]
 
 
+class NumberRange(BaseModel):
+    low: float = Field(description="The number itself, or the lower bound of a range")
+    high: Optional[float] = Field(default=None, description="Upper bound if this is a range like \"8-12\"; omit for a single number")
+
+
 class WeightExerciseEntity(BaseModel):
-    exercise: str
-    working_sets: Optional[str] = None
-    reps: Optional[str] = None
-    warmup_sets: Optional[str] = None
-    rir: Optional[str] = None
-    rest: Optional[str] = None
-    instructions: Optional[str] = None
-    video_url: Optional[str] = None
+    exercise: str = Field(description="Exercise name")
+    working_sets: Optional[NumberRange] = Field(default=None, description="Number of working sets")
+    reps: Optional[NumberRange] = Field(default=None, description="Rep count or range per set")
+    warmup_sets: Optional[NumberRange] = Field(default=None, description="Number of warmup sets")
+    rir: Optional[NumberRange] = Field(default=None, description="Reps in reserve")
+    rest: Optional[str] = Field(default=None, description="Rest duration between sets, e.g. \"60-90s\"")
+    instructions: Optional[str] = Field(default=None, description="Coaching notes or technique cues for this exercise")
+    video_url: Optional[str] = Field(default=None, description="Link to a demo video, if present")
 
 
 class CardioEntity(BaseModel):
-    activity: str
-    duration: Optional[str] = None
-    speed: Optional[str] = None
-    incline: Optional[str] = None
-    timing: Optional[str] = None  # e.g. "post-workout"
-    instructions: Optional[str] = None
-    video_url: Optional[str] = None
+    activity: str = Field(description="Cardio activity, e.g. \"Treadmill\", \"Cycling\"")
+    duration: Optional[str] = Field(default=None, description="Duration, e.g. \"20-30 min\"")
+    speed: Optional[NumberRange] = Field(default=None, description="Speed, e.g. km/h")
+    incline: Optional[NumberRange] = Field(default=None, description="Incline percentage")
+    timing: Optional[str] = Field(default=None, description="When to do it, e.g. \"post-workout\"")
+    instructions: Optional[str] = Field(default=None, description="Coaching notes for this activity")
+    video_url: Optional[str] = Field(default=None, description="Link to a demo video, if present")
 
 
 class GlossaryTermEntity(BaseModel):
-    term: str
-    explanation: str
+    term: str = Field(description="Fitness term or abbreviation, e.g. \"RIR\"")
+    explanation: str = Field(description="Plain-language definition of the term")
 
 
 class AdviceEntity(BaseModel):
-    topic: Optional[str] = None
-    text: str
+    topic: Optional[str] = Field(default=None, description="Short label for the advice, if any")
+    text: str = Field(description="The advice, rule, mistake to avoid, or motivation text itself")
 
 
 class ProgramDayEntity(BaseModel):
-    day_number: int
-    target: str  # muscle group(s) targeted, or "rest"
+    day_number: int = Field(description="Day number within the program")
+    target: str = Field(description="Muscle group(s) targeted that day, or \"rest\"")
 
 
 class TrainingSectionResult(BaseModel):
-    # Same rationale as NutritionSectionResult.page_topic above -- e.g. "LEGS",
-    # "FAQS", "Chest & Back" -- inferred by the model from the page's own
-    # content, not lifted from a markdown heading line.
-    page_topic: str
-    category: SectionCategory
-    cleaned_text: str
-    weight_exercises: List[WeightExerciseEntity] = Field(default_factory=list)
-    cardio_entries: List[CardioEntity] = Field(default_factory=list)
-    glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list)
-    advice_items: List[AdviceEntity] = Field(default_factory=list)
-    program_days: List[ProgramDayEntity] = Field(default_factory=list)
+    page_index: int = Field(description="The page marker number (from \"=== PAGE N ===\") this result corresponds to")
+    page_topic: str = Field(description="Short label inferred from the page's own content, e.g. \"LEGS\", \"FAQS\", \"Chest & Back\" -- the page may have no heading of its own, so infer it from what's actually there")
+    category: SectionCategory = Field(description="Which kind of content this page contains")
+    cleaned_text: str = Field(description="Raw OCR text reconstructed into clean, readable Markdown prose")
+    weight_exercises: List[WeightExerciseEntity] = Field(default_factory=list, description="Exercise entries, only when category is \"weight_exercise\"")
+    cardio_entries: List[CardioEntity] = Field(default_factory=list, description="Cardio entries, only when category is \"cardio\"")
+    glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list, description="Term definitions, only when category is \"glossary\"")
+    advice_items: List[AdviceEntity] = Field(default_factory=list, description="Advice entries, only when category is \"advice\"")
+    program_days: List[ProgramDayEntity] = Field(default_factory=list, description="Day/split entries, only when category is \"program_structure\"")
+
+
+class TrainingBatchResult(BaseModel):
+    pages: List[TrainingSectionResult] = Field(description="One result per input page")
 
 
 TRAINING_LIST_FIELDS = ("weight_exercises", "cardio_entries", "glossary_terms", "advice_items", "program_days")
