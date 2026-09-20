@@ -9,6 +9,7 @@ qdrant_client
 pydantic
 langchain_huggingface
 sentence-transformers
-pymongo
+pymongo>=4.9
 langchain_google_genai
 yt-dlp
+pytest
