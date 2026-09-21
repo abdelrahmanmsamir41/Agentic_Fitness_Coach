@@ -90,3 +90,12 @@ class TrainingBatchResult(BaseModel):
 
 
 TRAINING_LIST_FIELDS = ("weight_exercises", "cardio_entries", "glossary_terms", "advice_items", "program_days")
+
+
+class DayAssignment(BaseModel):
+    page_index: int = Field(description="The page marker number (from \"=== PAGE N ===\") this assignment is for")
+    day_number: Optional[int] = Field(default=None, description="The matching day_number from the day list, or null if this page doesn't clearly belong to any of them")
+
+
+class DayAssignmentResult(BaseModel):
+    assignments: List[DayAssignment] = Field(description="One assignment per input page")

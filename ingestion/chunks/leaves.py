@@ -1,5 +1,6 @@
-"""Build the parent/leaf chunk records described in the ingestion plan
-from a section's LLM extraction output.
+"""Turn one page's LLM extraction into its leaf chunk records -- one leaf per
+entity (exercise, cardio entry, glossary term, ...), plus a generic "section"
+fallback for prose-only pages that have no structured entities.
 """
 import re
 
@@ -47,66 +48,73 @@ def _detail_bits(entity, skip_keys):
     return bits
 
 
-def _make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, suffix_key, entity, embed_text, chunk_type):
+def _make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, suffix_key, entity, embed_text, chunk_type):
+    day_number = extraction.get("day_number")
+    if day_number is not None:
+        # a readable phrase, not the bare digit -- gives semantic search something
+        # to match on ("what's on day 1") while day_number itself stays a payload
+        # field for exact filtering, since a number alone embeds with little signal.
+        embed_text = f"Day {day_number} - {embed_text}"
     return {
         "chunk_id": f"{parent_chunk_id}:{idx:02d}-{_slug(suffix_key)}",
         "parent_chunk_id": parent_chunk_id,
         "document_id": doc_id,
         "document_type": document_type,
         "chunk_type": chunk_type,
-        "page": section["page"],
+        "page": page["page_index"],
         "page_topic": extraction["page_topic"],
+        "day_number": day_number,
         "entity": entity,
         "embed_text": embed_text,
         "needs_review": extraction["needs_review"],
     }
 
 
-def _weight_exercise_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
+def _weight_exercise_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     leaves = []
     for idx, entity in enumerate(extraction["weight_exercises"]):
         name = entity.get("exercise") or f"item-{idx}"
         detail_bits = _detail_bits(entity, {"exercise", "video_url"})
         embed_text = f"{extraction['page_topic']} > {name}: " + ", ".join(detail_bits)
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, name, entity, embed_text, "weight_exercise"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, name, entity, embed_text, "weight_exercise"))
     return leaves
 
 
-def _cardio_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
+def _cardio_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     leaves = []
     for idx, entity in enumerate(extraction["cardio_entries"]):
         name = entity.get("activity") or f"cardio-{idx}"
         detail_bits = _detail_bits(entity, {"activity", "video_url"})
         embed_text = f"{extraction['page_topic']} > Cardio - {name}: " + ", ".join(detail_bits)
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, name, entity, embed_text, "cardio"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, name, entity, embed_text, "cardio"))
     return leaves
 
 
-def _glossary_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
+def _glossary_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     leaves = []
     for idx, entity in enumerate(extraction["glossary_terms"]):
         term = entity.get("term") or f"term-{idx}"
         embed_text = f"{term}: {entity.get('explanation', '')}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, term, entity, embed_text, "glossary"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, term, entity, embed_text, "glossary"))
     return leaves
 
 
-def _advice_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
+def _advice_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     leaves = []
     for idx, entity in enumerate(extraction["advice_items"]):
         text = entity.get("text", "")
         embed_text = f"{extraction['page_topic']}: {text}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, f"advice-{idx}", entity, embed_text, "advice"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, f"advice-{idx}", entity, embed_text, "advice"))
     return leaves
 
 
-def _program_structure_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
+def _program_structure_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     leaves = []
     for idx, entity in enumerate(extraction["program_days"]):
         day = entity.get("day_number", idx)
         target = entity.get("target", "")
         embed_text = f"{extraction['page_topic']} > Day {day}: {target}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, f"day-{day}", entity, embed_text, "program_structure"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, f"day-{day}", entity, embed_text, "program_structure"))
     return leaves
 
 
@@ -119,32 +127,22 @@ _CATEGORY_LEAF_BUILDERS = {
 }
 
 
-def build_chunks(doc_id, document_type, section, extraction, section_index):
-
-    section_slug = _slug(extraction["page_topic"])
-    parent_chunk_id = f"{doc_id}:{section_index:04d}-{section_slug}"
-
-    parent = {
-        "parent_chunk_id": parent_chunk_id,
-        "document_id": doc_id,
-        "document_type": document_type,
-        "page_topic": extraction["page_topic"],
-        "page": section["page"],
-        "text": extraction["cleaned_text"],
-        "needs_review": extraction["needs_review"],
-    }
-
+def build_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
+    """Returns the list of leaf records for one page: dispatches to the
+    category-specific builder, or falls back to a generic "section" leaf for
+    a prose-only page with no structured entities. A "marketing" page gets
+    no leaves at all -- nothing there is worth retrieving."""
     if extraction.get("category") == "marketing":
-        return parent, []
+        return []
 
     builder = _CATEGORY_LEAF_BUILDERS.get(extraction.get("category"))
-    leaves = builder(parent_chunk_id, doc_id, document_type, section, extraction) if builder else []
+    leaves = builder(parent_chunk_id, doc_id, document_type, page, extraction) if builder else []
 
     if not leaves and _substantive_length(extraction["cleaned_text"]) >= _MIN_SUBSTANTIVE_LEN:
         embed_text = f"{extraction['page_topic']}: {_strip_links(extraction['cleaned_text'])}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, 0, "section", None, embed_text, "section"))
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, 0, "section", None, embed_text, "section"))
 
-    return parent, leaves
+    return leaves
 
 
 def _demo():

@@ -25,7 +25,7 @@ FILTER_FIELDS = {
     "document_type": PayloadSchemaType.KEYWORD,
     "client_id": PayloadSchemaType.KEYWORD,
     "active": PayloadSchemaType.BOOL,
-    "day": PayloadSchemaType.KEYWORD,
+    "day_number": PayloadSchemaType.INTEGER,
     "chunk_type": PayloadSchemaType.KEYWORD,
 }
 

@@ -1,6 +1,7 @@
 """Local MongoDB storage: document manifests (provenance), parent sections
 (full context for retrieval-time expansion), and extracted entities.
 """
+import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -20,6 +21,17 @@ def _db():
     if _client is None:
         _client = AsyncMongoClient(os.environ.get("MONGODB_URL", "mongodb://localhost:27017/"))
     return _client["choose_your_trainer"]
+
+
+async def delete_all():
+    """Wipe every manifest/parent/entity -- mirrors store_qdrant.reindex()'s
+    delete-then-rebuild pattern, so a full reingestion starts from a clean
+    slate instead of piling up duplicates alongside old runs."""
+    results = await asyncio.gather(*(
+        _db()[name].delete_many({}) for name in ("documents", "parents", "entities")
+    ))
+    print(f"🍃 wiped Mongo: {sum(r.deleted_count for r in results)} document(s) deleted "
+          f"across documents/parents/entities")
 
 
 async def mark_previous_versions_inactive(client_id, document_type):

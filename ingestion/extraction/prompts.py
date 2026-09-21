@@ -91,3 +91,25 @@ def build_training_batch_prompt(tagged_pages):
     """tagged_pages: iterable of (page_index, raw_text)."""
     pages_block = "\n\n".join(f"=== PAGE {idx} ===\n{text}" for idx, text in tagged_pages)
     return TRAINING_BATCH_PROMPT.format(pages_block=pages_block)
+
+
+DAY_ASSIGNMENT_PROMPT = """A training plan's split table lists these training days:
+{day_list}
+
+Below are other pages from the same plan, each with its own inferred topic. For each page,
+decide which listed day it belongs to, using your judgement -- the page's topic may be phrased,
+cased, abbreviated, or written in a different language than the day list (e.g. "Chest & Back"
+vs "يوم الصدر والظهر" both matching a "Chest & Back" day). Only return a day_number that
+appears in the list above; if a page clearly doesn't belong to any listed day (e.g. a general
+FAQ or cardio-protocol page not tied to one specific day), return null for it instead of guessing.
+
+Pages:
+{pages_block}
+"""
+
+
+def build_day_assignment_prompt(day_entries, page_topics):
+    """day_entries: iterable of (day_number, target). page_topics: iterable of (page_index, page_topic)."""
+    day_list = "\n".join(f"- Day {day_number}: {target}" for day_number, target in day_entries)
+    pages_block = "\n".join(f"- page {page_index}: \"{page_topic}\"" for page_index, page_topic in page_topics)
+    return DAY_ASSIGNMENT_PROMPT.format(day_list=day_list, pages_block=pages_block)
