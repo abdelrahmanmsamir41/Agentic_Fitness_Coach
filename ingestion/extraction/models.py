@@ -65,7 +65,6 @@ class GlossaryTermEntity(BaseModel):
 
 
 class AdviceEntity(BaseModel):
-    topic: Optional[str] = Field(default=None, description="Short label for the advice, if any")
     text: str = Field(description="The advice, rule, mistake to avoid, or motivation text itself")
 
 

@@ -1,4 +1,4 @@
-from .extract import normalize_and_extract
+from .extract import normalize_and_extract_batch
 from .models import SectionCategory
 
-__all__ = ["normalize_and_extract", "SectionCategory"]
+__all__ = ["normalize_and_extract_batch", "SectionCategory"]

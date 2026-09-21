@@ -46,8 +46,28 @@ def _slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "unnamed"
 
 
+def _fmt_number(n):
+    return str(int(n)) if n == int(n) else str(n)
+
+
+def _fmt_value(v):
+    if isinstance(v, dict) and "low" in v:
+        low, high = v.get("low"), v.get("high")
+        if low is None:
+            return None
+        return _fmt_number(low) if high is None or high == low else f"{_fmt_number(low)}-{_fmt_number(high)}"
+    return v
+
+
 def _detail_bits(entity, skip_keys):
-    return [f"{k}: {v}" for k, v in entity.items() if k not in skip_keys and v not in (None, "")]
+    bits = []
+    for k, v in entity.items():
+        if k in skip_keys:
+            continue
+        v = _fmt_value(v)
+        if v not in (None, ""):
+            bits.append(f"{k}: {v}")
+    return bits
 
 
 def _make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, suffix_key, entity, embed_text, chunk_type):
@@ -61,7 +81,6 @@ def _make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx,
         "page_topic": extraction["page_topic"],
         "entity": entity,
         "embed_text": embed_text,
-        "confidence": extraction.get("confidence", 1.0),
         "needs_review": extraction["needs_review"],
     }
 
@@ -117,15 +136,11 @@ def _glossary_leaves(parent_chunk_id, doc_id, document_type, section, extraction
 
 
 def _advice_leaves(parent_chunk_id, doc_id, document_type, section, extraction):
-    leaves, names = [], []
+    leaves = []
     for idx, entity in enumerate(extraction["advice_items"]):
-        topic = entity.get("topic")
         text = entity.get("text", "")
-        names.append(topic or f"advice-{idx}")
-        embed_text = f"{extraction['page_topic']} - {topic}: {text}" if topic else f"{extraction['page_topic']}: {text}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, topic or f"advice-{idx}", entity, embed_text, "advice"))
-    if len(leaves) >= _MIN_ITEMS_FOR_SUMMARY:
-        leaves.append(_summary_leaf(parent_chunk_id, doc_id, document_type, section, extraction, "advice", names))
+        embed_text = f"{extraction['page_topic']}: {text}"
+        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, idx, f"advice-{idx}", entity, embed_text, "advice"))
     return leaves
 
 
@@ -188,3 +203,17 @@ def build_chunks(doc_id, document_type, section, extraction, section_index):
         leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, section, extraction, 0, "section", None, embed_text, "section"))
 
     return parent, leaves
+
+
+def _demo():
+    assert _fmt_value({"low": 8.0, "high": 12.0}) == "8-12"
+    assert _fmt_value({"low": 2.0, "high": None}) == "2"
+    assert _fmt_value({"low": 5.5, "high": 5.5}) == "5.5"
+    assert _fmt_value({"low": None, "high": None}) is None
+    assert _fmt_value("60-90s") == "60-90s"
+    assert _detail_bits({"exercise": "Squat", "reps": {"low": 8.0, "high": 12.0}, "video_url": "x"}, {"exercise", "video_url"}) == ["reps: 8-12"]
+
+
+if __name__ == "__main__":
+    _demo()
+    print("ok")

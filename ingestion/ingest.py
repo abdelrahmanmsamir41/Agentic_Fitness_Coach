@@ -16,7 +16,7 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 from ocr import autocrop, native_text, paddle_api
 import links
 import chunk
-from extraction.extract import normalize_and_extract
+from extraction.extract import normalize_and_extract_batch
 import store_mongo
 # import store_qdrant
 
@@ -27,9 +27,10 @@ COACH_ID = "coach_self"
 CLIENT_ID = "client_self"
 
 LLM_CONCURRENCY = 4  # cap on concurrent Gemini calls, to avoid rate-limit errors
+PAGES_PER_LLM_CALL = 4  # pages batched into one extraction call, instead of one call per page
 DOCUMENTS = [
-    (REPO_ROOT / "Splits" / "belghamdi_splits" / "BelghamdiSplit-Anterior-x-Posterior.pdf", "training_plan"),
-    # (REPO_ROOT / "Splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
+    # (REPO_ROOT / "Splits" / "belghamdi_splits" / "BelghamdiSplit-Anterior-x-Posterior.pdf", "training_plan"),
+    (REPO_ROOT / "Splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
     # (REPO_ROOT / "splits" / "D-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114305.pdf", "diet_plan"),
     # (REPO_ROOT / "splits" / "Recipes E-Book _260909_114355.pdf", "recipe_book"),
 ]
@@ -61,14 +62,24 @@ async def _parse_and_link(doc_id, pdf_path):
     return links.merge_links_into_pages(pages, links_by_page)  # return list of {"page_index": int, "markdown": str} with links merged into markdown
 
 
-async def _extract_one(doc_id, document_type, common, idx, section):
+def _batch(indexed_sections, size):
+    return [indexed_sections[i:i + size] for i in range(0, len(indexed_sections), size)]
+
+
+async def _extract_batch(doc_id, document_type, common, indexed_batch):
+    sections = [section for _, section in indexed_batch]
     async with _llm_semaphore:
-        extraction = await normalize_and_extract(document_type, section["text"])
-    parent, leaf_chunks = chunk.build_chunks(doc_id, document_type, section, extraction, idx)
-    parent.update(common)
-    for leaf in leaf_chunks:
-        leaf.update(common)
-    return parent, leaf_chunks
+        extraction_by_page = await normalize_and_extract_batch(document_type, sections)
+
+    results = []
+    for idx, section in indexed_batch:
+        extraction = extraction_by_page[section["page"]]
+        parent, leaf_chunks = chunk.build_chunks(doc_id, document_type, section, extraction, idx)
+        parent.update(common)
+        for leaf in leaf_chunks:
+            leaf.update(common)
+        results.append((parent, leaf_chunks))
+    return results, extraction_by_page
 
 
 async def ingest_document(pdf_path, document_type, coach_id, client_id):
@@ -102,35 +113,44 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
     (doc_out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"[{doc_id}] {len(pages)} pages parsed, manifest written to {doc_out_dir}")
 
-    # await store_mongo.mark_previous_versions_inactive(client_id, document_type)
-    # await store_mongo.save_document_manifest(manifest)
+    await store_mongo.mark_previous_versions_inactive(client_id, document_type)
+    await store_mongo.save_document_manifest(manifest)
     
-    # sections = chunk.split_sections(pages)
-    # print(sections[:2])
-    # common = {
-    #     "coach_id": coach_id,
-    #     "client_id": client_id,
-    #     "active": True,
-    #     "effective_date": effective_date,
-    #     "knowledge_tier": "client_plan",
-    #     "language": "ar-en",
-    #     "source_pdf": pdf_path.name,
-    # }
+    sections = chunk.split_sections(pages)
+    print(sections[:2])
+    common = {
+        "coach_id": coach_id,
+        "client_id": client_id,
+        "active": True,
+        "effective_date": effective_date,
+        "knowledge_tier": "client_plan",
+        "language": "ar-en",
+        "source_pdf": pdf_path.name,
+    }
     
-    # results = await asyncio.gather(*(
-    #     _extract_one(doc_id, document_type, common, idx, section)
-    #     for idx, section in enumerate(sections)
-    # ))
-    #
-    # all_parents, all_leaves = [], []
-    # for parent, leaf_chunks in results:
-    #     all_parents.append(parent)
-    #     all_leaves.extend(leaf_chunks)
-    #
-    # await store_mongo.save_parents_and_entities(all_parents, all_leaves)
-    # print(f"[{doc_id}] {len(sections)} pages, {len(all_leaves)} leaf chunks, "
-    #       f"{sum(1 for l in all_leaves if l['needs_review'])} flagged for review")
-    # return all_leaves
+    batches = await asyncio.gather(*(
+        _extract_batch(doc_id, document_type, common, indexed_batch)
+        for indexed_batch in _batch(list(enumerate(sections)), PAGES_PER_LLM_CALL)
+    ))
+
+    all_parents, all_leaves, all_extractions = [], [], {}
+    for results, extraction_by_page in batches:
+        for parent, leaf_chunks in results:
+            all_parents.append(parent)
+            all_leaves.extend(leaf_chunks)
+        all_extractions.update(extraction_by_page)
+
+    extractions_path = doc_out_dir / "extractions.json"
+    extractions_path.write_text(
+        json.dumps({str(k): all_extractions[k] for k in sorted(all_extractions)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"[{doc_id}] LLM extraction output written to {extractions_path}")
+
+    await store_mongo.save_parents_and_entities(all_parents, all_leaves)
+    print(f"[{doc_id}] {len(sections)} pages, {len(all_leaves)} leaf chunks, "
+          f"{sum(1 for l in all_leaves if l['needs_review'])} flagged for review")
+    return all_leaves
 
 
 async def main():
