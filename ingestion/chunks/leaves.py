@@ -108,31 +108,24 @@ def _advice_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     return leaves
 
 
-def _program_structure_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
-    leaves = []
-    for idx, entity in enumerate(extraction["program_days"]):
-        day = entity.get("day_number", idx)
-        target = entity.get("target", "")
-        embed_text = f"{extraction['page_topic']} > Day {day}: {target}"
-        leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, f"day-{day}", entity, embed_text, "program_structure"))
-    return leaves
-
-
 _CATEGORY_LEAF_BUILDERS = {
     "weight_exercise": _weight_exercise_leaves,
     "cardio": _cardio_leaves,
     "glossary": _glossary_leaves,
     "advice": _advice_leaves,
-    "program_structure": _program_structure_leaves,
 }
 
 
 def build_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
     """Returns the list of leaf records for one page: dispatches to the
     category-specific builder, or falls back to a generic "section" leaf for
-    a prose-only page with no structured entities. A "marketing" page gets
-    no leaves at all -- nothing there is worth retrieving."""
-    if extraction.get("category") == "marketing":
+    a prose-only page with no structured entities. A "marketing" page gets no
+    leaves at all -- nothing there is worth retrieving. Neither does
+    "program_structure": its day/target mapping is only extracted to stamp
+    day_number onto every weight_exercise/cardio leaf (see
+    extraction.extract._resolve_day_numbers) -- as its own leaf it would just
+    repeat what's already in every one of that day's exercise leaves."""
+    if extraction.get("category") in ("marketing", "program_structure"):
         return []
 
     builder = _CATEGORY_LEAF_BUILDERS.get(extraction.get("category"))
