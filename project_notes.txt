@@ -1,86 +1,51 @@
-dont forget to make a plan for handling missing text by ocr by filling it with the pymupdf parser or pymupdf-llm4 ( DONE — ocr/native_text.py: prefer_native_when_ocr_diverges + append_missing_native_numbers )
-
-Ran chunk.split_sections() against the real pages.json and cross-checked with the raw OCR markdown. Two things confirmed working, one real gap, and one significant finding:
-
+dont forget to make a plan for handling missing text by ocr by filling it with the pymupdf parser or pymupdf-llm4 ( DONE — ocr/native_text.py: prefer_native_when_ocr_diverges + append_missing_native_numbers )    | DONE |
 
 rethink about the chunking strategy , and the extraction of cleaned text from gemini
 because , if the child parent  will not be used , then its not sueful to generate it 
 
----------------------------------------------------------------------------
-accordign the childparent retriever , isnt the returned chest excercises will be suppose in 3 pages , those 3 pages will be returned to the llm for determining the answer , isnt this will be ineffecient and will cost more
-Yes, your instinct is right — and it's worse than just "3 pages instead of 5 chunks." Look at what's actually in a leaf chunk's payload right now: chunk.py's _make_leaf stores the full entity dict (exercise name, sets, reps, RIR, rest, video_url) directly on every weight_exercise leaf. That's already the complete, self-contained answer — nothing more is needed from the parent.
-
-So a blanket "always resolve child → parent" retriever is pure waste here: for 7 chest exercises spread across 1–3 pages, you'd pull in entire page tables (every OTHER exercise on those pages too, headings, markdown table syntax) just to re-derive data you already had in the leaf's entity field. That's strictly more tokens for zero new information — the parent-child pattern earns its keep when the child alone lacks context (a terse snippet that needs its surrounding paragraph), not when the child is already a fully structured record.
-
-Recommendation: don't apply parent-fetching uniformly. Use chunk_type to decide — weight_exercise/cardio/glossary/advice/program_structure leaves are self-contained (their entity field has everything), so answer straight from the leaf hits, no parent lookup. Only fall back to the parent's cleaned_text for chunk_type="section" (the fallback leaf for "other"-category pages), since that's the one case where the leaf's embed_text is a lossy trim of prose that actually needs the fuller parent text.
-
-what if someone asked on an excercise in a specific day ??
-Real gap, and it's the same one as the day field issue from earlier, just now concrete: today it would require two independent semantic hops, chained with nothing solid linking them.
-
-Hop 1 works fine: the program_structure page produces one leaf per day with embed_text = "TRAINING SPLIT > Day 1: chest & back" and entity = {"day_number": 1, "target": "chest & back"} (chunk.py's _program_structure_leaves) — a query mentioning "day 1" would retrieve that fine and resolve target = "chest & back".
-
-Hop 2 is the problem: nothing connects that resolved target string to the actual weight_exercise page for that day. Each exercise-table page only has a page_topic (e.g. "Chest & Back") inferred by a separate LLM call, on a separate page, with no cross-reference to the day number at all. So step 2 becomes a second fuzzy vector search using the resolved target as a query, hoping page_topic phrasing lines up closely enough — "chest & back" vs "Chest & Back" will probably match, but there's no guarantee across a whole document (different casing, "Chest/Back," synonyms, etc.), and a single miss here just silently returns the wrong day's exercises with no error.
-
-The fix is at extraction time, not query time: give each weight_exercise/cardio page a day_number field directly (resolved from the split table during extraction, or just asked of the model per page), so day-scoped queries become an exact filter instead of a second semantic guess.
-
-Before I go further — do you want me to add that (day_number on the exercise-page schema), or were you just probing whether the current design handles this case at all?
---------------------------------------------------------------------------------------------------------------
-
+dont forget to enrich each extracted exercise from data d4 you already made 
 i setted d4  as a source of reference to excercises to give them more information for making retrieval more better and increase the accuracy, i wanat just to convert it to json and  make the logic that relates each excercise extracted correctly to the json (you should revise all the extraction process to ensure exercises are extracted correct with all other content in the pdf ), then handle the classification of each page using the promt you made.
-
---- i could make a schema for each set of somethings i want to extract from anything in the pdf if founf and tell the llm to fill them out and leave the rest with null
-( DONE — extraction/models.py: SectionCategory-typed entities (WeightExerciseEntity, CardioEntity, GlossaryTermEntity, AdviceEntity, ProgramDayEntity), each field Optional and defaulting to None/empty when not present on the page. )
-------you you should start actually makign the schema you want for each segment you want to extract from the .md ( you can go through wach page and determine what segments could be extracted from it with their fields), also you should know that mre than one segement could be related but in another day so mention it when making the prompt
------- you should put in concideration  changes you made in preprocessing , actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
------- also you shopuld know where these extracted segments will be saved and what features or what you will do with them later 
-
------- my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
-
----- make an ocr related preprocessing pipeline ( DONE — ingestion/ocr/ package: paddle_api.py, autocrop.py, native_text.py, preprocess.py, tables.py )
-
---- you should mention in the prompt that some times headings are marked with hashtags and sometimes not, its based on ocr accuracy result
-also the odrder of text it self like a paragraph under a heading not its original one
-dont forget to mention that order of links related to order of excercises, and if there is other links not related to excercises and not associated with a word try to relate it to the best matching
-( Done — extraction/prompts.py TRAINING_BATCH_PROMPT, "OCR quirks to account for" section )
-
-if value is missing int he table relate to number, mean its 0
-( Done — extraction/prompts.py TRAINING_BATCH_PROMPT's NumberRange example note )
 
 also you faster the relation process by some of words if mentioned in the query , but we will do this later,  like back, chest , or what is written below.
 
-i want to convert db into dumbbell ( Done )
 make if exercise mentioned (machine, cable, dumbell ) to put them as a Equipment
-make an llm as a judje to be certain of features of an exercise 
 
-include in the prmpt when processing the ocr output , that some timesextracted text under a specific heading didnt got under it directly but under another heading
+make an llm as a judje to be certain of features of an exercise 
+--------------------------------------------------------------------------------------------------------------
+
+
+|------ i could make a schema for each set of somethings i want to extract from anything in the pdf if founf and tell the llm to fill them out and leave the rest with null ------( DONE — extraction/models.py: SectionCategory-typed entities (WeightExerciseEntity, CardioEntity, GlossaryTermEntity, AdviceEntity, ProgramDayEntity), each field Optional and defaulting to None/empty when not present on the page. )
+|------ you you should start actually makign the schema you want for each segment you want to extract from the .md ( you can go through wach page and determine what segments could be extracted from it with their fields), also you should know that mre than one segement could be related but in another day so mention it when making the prompt (DONE)
+|------ also you shopuld know where these extracted segments will be saved and what features or what you will do with them later   (DONE)
+
+|------ make an ocr related preprocessing pipeline ( DONE — ingestion/ocr/ package: paddle_api.py, autocrop.py, native_text.py, preprocess.py, tables.py )
+
+|------ you should mention in the prompt that some times headings are marked with hashtags and sometimes not, its based on ocr accuracy result
+also the odrder of text it self like a paragraph under a heading not its original one , and dont forget to mention that order of links related to order of excercises, and if there is other links not related to excercises and not associated with a word try to relate it to the best matching
 ( Done — extraction/prompts.py TRAINING_BATCH_PROMPT, "OCR quirks to account for" section )
+
+|------ if value is missing int he table relate to number, mean its 0 ( Done — extraction/prompts.py TRAINING_BATCH_PROMPT's NumberRange example note )
+
+|------ i want to convert db into dumbbell ( Done )
+
+|------ include in the prmpt when processing the ocr output , that some timesextracted text under a specific heading didnt got under it directly but under another heading
+( Done — extraction/prompts.py TRAINING_BATCH_PROMPT, "OCR quirks to account for" section )
+
+|------ consider using docling for handling html tables ( done )
+
+
+------ you should put in concideration  changes you made in preprocessing , actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
+
+------ my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
 
 make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
 
 dont forget to handle more then just pdfs 
 
-you could make a l;ibrary for abbreviations in the gym insdustry. 
+you could make a library for abbreviations in the gym insdustry. 
 
 i installed a library called ytdlp fetches original transcription with all autogenerates oines by youtube , and also extract the comments 
 i want to add a feature that recommend a specific video url , or a part in a vlog for the query
 put in consideration to enrich youtube links with metadata 
 
 dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 
-
-
-
---- consider using docling for handling html tables ( done )
-
-( DONE — both table shapes below are implemented exactly as specified in ocr/tables.py's _render_grid: width==2 -> TABLE[type=mapping], else TABLE[type=data] with a columns: line )
-include in the prompt also these information TABLE[type=mapping] — for a 2-column table with no real header (like the training-split table: chest & back | DAY 1, LEGS | DAY 2...). Every row is just a label: value pair, printed straight through with no header line at all:
-
-TABLE[type=mapping]
-chest & back: DAY 1
-LEGS: DAY 2
-TABLE[type=data] — for any table with 3+ columns (the actual exercise tables: Workout Name / Sets / Reps / RIR / Rest / etc.). The first row is treated as the header, its cells get slugified into columns: ... printed once, then every remaining row is just pipe-separated values:
-
-
-TABLE[type=data]
-columns: exercise, reps, rest
-
-Squat | 10 | 2 min
