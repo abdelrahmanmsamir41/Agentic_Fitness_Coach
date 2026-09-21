@@ -15,7 +15,8 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 
 from ocr import autocrop, native_text, paddle_api
 import links
-import chunk
+import chunks
+import sections as sections_module
 from extraction.extract import normalize_and_extract_batch
 import store_mongo
 # import store_qdrant
@@ -29,8 +30,9 @@ CLIENT_ID = "client_self"
 LLM_CONCURRENCY = 4  # cap on concurrent Gemini calls, to avoid rate-limit errors
 PAGES_PER_LLM_CALL = 4  # pages batched into one extraction call, instead of one call per page
 DOCUMENTS = [
+    (REPO_ROOT / "splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114328.pdf", "training_plan"),
     # (REPO_ROOT / "Splits" / "belghamdi_splits" / "BelghamdiSplit-Anterior-x-Posterior.pdf", "training_plan"),
-    (REPO_ROOT / "Splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
+    # (REPO_ROOT / "splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
     # (REPO_ROOT / "splits" / "D-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114305.pdf", "diet_plan"),
     # (REPO_ROOT / "splits" / "Recipes E-Book _260909_114355.pdf", "recipe_book"),
 ]
@@ -47,7 +49,7 @@ async def _parse_and_link(doc_id, pdf_path):
     (local PyMuPDF, sub-second) don't depend on each other -- run them
     concurrently. Real time saved is small since the OCR call dominates, but
     there's no reason to block one on the other."""
-    print(f"[{doc_id}] parsing via PaddleOCR-VL + extracting links via PyMuPDF...")
+    print(f"🔍 [{doc_id}] parsing via PaddleOCR-VL + extracting links via PyMuPDF...")
     with autocrop.cropped_copy(str(pdf_path)) as ocr_path:
         pages, links_by_page, native_by_page = await asyncio.gather(
             paddle_api.parse_pdf(ocr_path),  # return list of {"page_index": int, "markdown": str}
@@ -58,7 +60,7 @@ async def _parse_and_link(doc_id, pdf_path):
     pages = native_text.append_missing_native_numbers(pages, native_by_page)
     flagged = native_text.flag_unreliable_pages(pages, native_by_page)
     if flagged:
-        print(f"[{doc_id}] WARNING: pages {flagged} have no native-text fallback and OCR output looks unreliable")
+        print(f"⚠️ [{doc_id}] WARNING: pages {flagged} have no native-text fallback and OCR output looks unreliable")
     return links.merge_links_into_pages(pages, links_by_page)  # return list of {"page_index": int, "markdown": str} with links merged into markdown
 
 
@@ -66,15 +68,18 @@ def _batch(indexed_sections, size):
     return [indexed_sections[i:i + size] for i in range(0, len(indexed_sections), size)]
 
 
-async def _extract_batch(doc_id, document_type, common, indexed_batch):
+async def _extract_batch(doc_id, document_type, common, batch_num, total_batches, indexed_batch):
     sections = [section for _, section in indexed_batch]
     async with _llm_semaphore:
-        extraction_by_page = await normalize_and_extract_batch(document_type, sections)
+        print(f"🤖 [{doc_id}] extracting batch {batch_num}/{total_batches} ({len(sections)} pages)...")
+        extraction_by_page = await normalize_and_extract_batch(document_type, sections)  
+        # THE RESULT IS 
+    print(f"✅ [{doc_id}] batch {batch_num}/{total_batches} done")
 
     results = []
     for idx, section in indexed_batch:
         extraction = extraction_by_page[section["page"]]
-        parent, leaf_chunks = chunk.build_chunks(doc_id, document_type, section, extraction, idx)
+        parent, leaf_chunks = chunks.build_chunks(doc_id, document_type, section, extraction, idx)
         parent.update(common)
         for leaf in leaf_chunks:
             leaf.update(common)
@@ -89,7 +94,7 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
     pages_cache = doc_out_dir / "pages.json"
 
     if pages_cache.exists():
-        print(f"[{doc_id}] reusing cached parse from {pages_cache}")
+        print(f"💾 [{doc_id}] reusing cached parse from {pages_cache}")
         pages = json.loads(pages_cache.read_text(encoding="utf-8"))
     else:
         pages = await _parse_and_link(doc_id, pdf_path)
@@ -111,13 +116,17 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
         "active": True,
     }
     (doc_out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"[{doc_id}] {len(pages)} pages parsed, manifest written to {doc_out_dir}")
+    print(f"📝 [{doc_id}] {len(pages)} pages parsed, manifest written to {doc_out_dir}")
 
+    print(f"🍃 [{doc_id}] saving manifest to Mongo...")
     await store_mongo.mark_previous_versions_inactive(client_id, document_type)
     await store_mongo.save_document_manifest(manifest)
+
+    sections = sections_module.split_sections(pages)  # PAGES IS A LIST OF {"page_index": int, "markdown": str} IN DOCUMENT ORDER
+    # sections= OUTPUT IS A LIST OF {"page": int, "text": str} IN DOCUMENT ORDER
+    print(f"✂️ [{doc_id}] split into {len(sections)} sections")
     
-    sections = chunk.split_sections(pages)
-    print(sections[:2])
+    
     common = {
         "coach_id": coach_id,
         "client_id": client_id,
@@ -128,9 +137,14 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
         "source_pdf": pdf_path.name,
     }
     
+    indexed_batches = _batch(list(enumerate(sections)), PAGES_PER_LLM_CALL) # PROCESSING 4 PAGES AT A TIME
+    
+    print(f"🤖 [{doc_id}] running LLM extraction on {len(indexed_batches)} batches "
+          f"({LLM_CONCURRENCY} concurrent)...")
+    
     batches = await asyncio.gather(*(
-        _extract_batch(doc_id, document_type, common, indexed_batch)
-        for indexed_batch in _batch(list(enumerate(sections)), PAGES_PER_LLM_CALL)
+        _extract_batch(doc_id, document_type, common, i + 1, len(indexed_batches), indexed_batch)
+        for i, indexed_batch in enumerate(indexed_batches)
     ))
 
     all_parents, all_leaves, all_extractions = [], [], {}
@@ -145,10 +159,11 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
         json.dumps({str(k): all_extractions[k] for k in sorted(all_extractions)}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"[{doc_id}] LLM extraction output written to {extractions_path}")
+    print(f"📦 [{doc_id}] LLM extraction output written to {extractions_path}")
 
+    print(f"🍃 [{doc_id}] saving {len(all_parents)} parents + {len(all_leaves)} leaf chunks to Mongo...")
     await store_mongo.save_parents_and_entities(all_parents, all_leaves)
-    print(f"[{doc_id}] {len(sections)} pages, {len(all_leaves)} leaf chunks, "
+    print(f"✅ [{doc_id}] {len(sections)} pages, {len(all_leaves)} leaf chunks, "
           f"{sum(1 for l in all_leaves if l['needs_review'])} flagged for review")
     return all_leaves
 
@@ -156,7 +171,7 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
 async def main():
     for pdf_path, document_type in DOCUMENTS:
         await ingest_document(pdf_path, document_type, COACH_ID, CLIENT_ID)
-    print("Done (parse + manifest only).")
+    print("🎉 Done.")
 
     # all_leaf_chunks = []
     # for pdf_path, document_type in DOCUMENTS:

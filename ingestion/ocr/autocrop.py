@@ -40,7 +40,7 @@ def cropped_copy(pdf_path):
     page needed cropping, otherwise a temp copy with the sparse pages'
     cropbox tightened to their real (rendered) content."""
     doc = fitz.open(pdf_path)
-    cropped_any = False
+    cropped_pages = []
     for page in doc:
         metrics = _content_metrics(page)
         if metrics is None:
@@ -53,13 +53,15 @@ def cropped_copy(pdf_path):
         # cropbox, not mediabox -- set_mediabox silently resets cropbox to an
         # unrelated offset as a side effect (confirmed against a real PDF).
         page.set_cropbox(padded)
-        cropped_any = True
+        cropped_pages.append(page.number)
 
-    if not cropped_any:
+    if not cropped_pages:
+        print("✂️ autocrop: no sparse pages found, using original PDF")
         doc.close()
         yield pdf_path
         return
 
+    print(f"✂️ autocrop: cropping {len(cropped_pages)} sparse page(s) {cropped_pages}")
     tmp_path = tempfile.mktemp(suffix=".pdf")
     doc.save(tmp_path)
     doc.close()

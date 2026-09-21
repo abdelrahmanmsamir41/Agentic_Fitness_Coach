@@ -40,12 +40,16 @@ def _ocr_missed_the_page(native, ocr_markdown):
 
 
 def prefer_native_when_ocr_diverges(pages, native_text_by_page):
+    swapped = []
     for page in pages:
         native = native_text_by_page.get(page["page_index"], "").strip()
         if len(native) < _MIN_NATIVE_LEN:
             continue
         if _ocr_missed_the_page(native, page["markdown"]):
             page["markdown"] = native
+            swapped.append(page["page_index"])
+    if swapped:
+        print(f"🔀 native text preferred over OCR for pages {swapped} (OCR missed the content)")
     return pages
 
 
@@ -73,6 +77,7 @@ def append_missing_native_numbers(pages, native_text_by_page):
     number native has that OCR's output doesn't gets appended, not swapped
     in. No length gate: a short prescription snippet is exactly the case
     this exists for, unlike the whole-page replace above."""
+    appended = []
     for page in pages:
         native = native_text_by_page.get(page["page_index"], "").strip()
         if not native:
@@ -80,4 +85,7 @@ def append_missing_native_numbers(pages, native_text_by_page):
         missing = set(_NUMBER.findall(native)) - set(_NUMBER.findall(page["markdown"]))
         if missing:
             page["markdown"] += f"\n\n{native}"
+            appended.append(page["page_index"])
+    if appended:
+        print(f"➕ appended missing native numbers for pages {appended}")
     return pages

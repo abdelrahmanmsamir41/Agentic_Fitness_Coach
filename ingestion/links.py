@@ -32,6 +32,8 @@ def extract_links(pdf_path):
             entries.append({"url": l["uri"], "anchor_text": anchor_text})
         by_page[page.number] = entries
     doc.close()
+    total_links = sum(len(v) for v in by_page.values())
+    print(f"🔗 extracted {total_links} link(s) across {len(by_page)} page(s)")
     return by_page
 
 

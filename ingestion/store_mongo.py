@@ -23,14 +23,17 @@ def _db():
 
 
 async def mark_previous_versions_inactive(client_id, document_type):
-    await _db()["documents"].update_many(
+    result = await _db()["documents"].update_many(
         {"client_id": client_id, "document_type": document_type, "active": True},
         {"$set": {"active": False}},
     )
+    if result.modified_count:
+        print(f"🍃 marked {result.modified_count} previous '{document_type}' version(s) inactive")
 
 
 async def save_document_manifest(manifest):
     await _db()["documents"].insert_one(dict(manifest))
+    print(f"🍃 manifest for '{manifest['document_id']}' saved to Mongo")
 
 
 async def save_parents_and_entities(parents, leaf_chunks):
@@ -38,6 +41,7 @@ async def save_parents_and_entities(parents, leaf_chunks):
         await _db()["parents"].insert_many([dict(p) for p in parents])
     if leaf_chunks:
         await _db()["entities"].insert_many([dict(c) for c in leaf_chunks])
+    print(f"🍃 saved {len(parents)} parent(s) + {len(leaf_chunks)} entity chunk(s) to Mongo")
 
 
 async def get_parent(parent_chunk_id):

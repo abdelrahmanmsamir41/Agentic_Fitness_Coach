@@ -75,13 +75,20 @@ async def reindex(leaf_chunks):
         await client.upsert(collection_name=COLLECTION_NAME, points=points[i:i + UPSERT_BATCH_SIZE])
 
 
+def _match(value):
+    from qdrant_client.models import MatchAny, MatchValue
+    if isinstance(value, (list, tuple, set)):
+        return MatchAny(any=list(value))
+    return MatchValue(value=value)
+
+
 async def search(query_text, top_k=5, filters=None):
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
+    from qdrant_client.models import FieldCondition, Filter
 
     query_vector = await asyncio.to_thread(_get_embeddings().embed_query, query_text)
     qdrant_filter = None
     if filters:
-        qdrant_filter = Filter(must=[FieldCondition(key=k, match=MatchValue(value=v)) for k, v in filters.items()])
+        qdrant_filter = Filter(must=[FieldCondition(key=k, match=_match(v)) for k, v in filters.items()])
     result = await _get_client().query_points(
         collection_name=COLLECTION_NAME, query=query_vector, limit=top_k, query_filter=qdrant_filter
     )

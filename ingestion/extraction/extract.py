@@ -71,6 +71,10 @@ def _match_batch_results(raw_text_by_page, page_results):
     missing = set(raw_text_by_page) - set(results)
     if missing:
         raise ValueError(f"batch extraction missing pages {sorted(missing)}")
+
+    flagged = sorted(p for p, r in results.items() if r["needs_review"])
+    if flagged:
+        print(f"🚩 pages {flagged} flagged needs_review (cleaned text lost numbers/URLs)")
     return results
 
 
@@ -81,6 +85,7 @@ async def normalize_and_extract_batch(document_type, sections):
 
     structured_model = _get_model().with_structured_output(TrainingBatchResult)
     prompt = prompts.build_training_batch_prompt([(s["page"], s["text"]) for s in sections])
+    print(f"💬 calling {MODEL_NAME} for pages {[s['page'] for s in sections]}...")
     batch_result = await structured_model.ainvoke(prompt)
 
     raw_text_by_page = {s["page"]: s["text"] for s in sections}
