@@ -47,7 +47,9 @@ OCR quirks to account for:
   text (if a link doesn't clearly belong to any single row, attach it to the closest one rather
   than dropping it), and put it in both that row's video_url field AND its cleaned_text table
   cell as "[video](url)" (see step 1). A link tied to specific words rather than row order (e.g.
-  inline in a sentence) goes next to those words in cleaned_text instead.
+  inline in a sentence) goes next to those words in cleaned_text instead. Once every link has
+  been placed this way, DROP the raw "_Links:" block itself from cleaned_text -- it must not
+  also appear at the end of the page, since that would duplicate every URL you just placed.
 
 Rules: NEVER change any number, unit, set/rep count, RIR/RPE value, or URL from the raw
 text. Preserve exercise/food names, coach-specific terminology, and Arabic text as-is
