@@ -74,7 +74,7 @@ def _weight_exercise_leaves(parent_chunk_id, doc_id, document_type, page, extrac
     leaves = []
     for idx, entity in enumerate(extraction["weight_exercises"]):
         name = entity.get("exercise") or f"item-{idx}"
-        detail_bits = _detail_bits(entity, {"exercise", "video_url"})
+        detail_bits = _detail_bits(entity, {"exercise", "video_url", "ref_match_score"})
         embed_text = f"{extraction['page_topic']} > {name}: " + ", ".join(detail_bits)
         leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, name, entity, embed_text, "weight_exercise"))
     return leaves

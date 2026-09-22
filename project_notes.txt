@@ -38,14 +38,15 @@ also the odrder of text it self like a paragraph under a heading not its origina
 
 ------ my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
 
-make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
+------ make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
 
-dont forget to handle more then just pdfs 
+------ dont forget to handle more then just pdfs 
 
-you could make a library for abbreviations in the gym insdustry. 
+------ you could make a library for abbreviations in the gym insdustry. 
 
-i installed a library called ytdlp fetches original transcription with all autogenerates oines by youtube , and also extract the comments 
-i want to add a feature that recommend a specific video url , or a part in a vlog for the query
+------ i installed a library called ytdlp fetches original transcription with all autogenerates oines by youtube , and also extract the comments 
+
+------ i want to add a feature that recommend a specific video url , or a part in a vlog for the query
 put in consideration to enrich youtube links with metadata 
 
-dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 
+------ dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 

@@ -9,6 +9,7 @@ import re
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+import exercise_reference
 from . import prompts
 from .models import DayAssignmentResult, NutritionSectionResult, TrainingBatchResult, TRAINING_LIST_FIELDS
 
@@ -150,6 +151,28 @@ async def _resolve_day_numbers(doc_id, all_extractions):
         all_extractions[page]["day_number"] = day_number
 
 
+def _resolve_exercise_reference(doc_id, all_extractions):
+    """Stamps ref_type/ref_bodypart/ref_equipment/ref_level/ref_match_score onto
+    every weight_exercise entity, matched against the static megaGymDataset
+    reference set (exercise_reference/ package) -- no LLM involved, purely local."""
+    exercises = [
+        entity
+        for extraction in all_extractions.values() if extraction["category"] == "weight_exercise"
+        for entity in extraction["weight_exercises"]
+    ]
+    if not exercises:
+        return
+
+    names = [e.get("exercise", "") for e in exercises]
+    matches = exercise_reference.match_exercises(names)
+    matched = 0
+    for entity, match in zip(exercises, matches):
+        if match:
+            entity.update(match)
+            matched += 1
+    print(f"🏋️ [{doc_id}] matched {matched}/{len(exercises)} exercise(s) against the reference dataset")
+
+
 async def extract_document(doc_id, document_type, pages):
     """Runs normalize_and_extract_batch concurrently across PAGES_PER_LLM_CALL-sized
     batches (capped at LLM_CONCURRENCY in flight), then resolves day_number for
@@ -168,6 +191,7 @@ async def extract_document(doc_id, document_type, pages):
         all_extractions.update(extraction_by_page)
 
     await _resolve_day_numbers(doc_id, all_extractions)
+    _resolve_exercise_reference(doc_id, all_extractions)
     return all_extractions
 
 
