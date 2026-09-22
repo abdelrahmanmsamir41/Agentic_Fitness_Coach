@@ -23,6 +23,7 @@ _reference_embeddings = None
 def get_embedder():
     global _embedder
     if _embedder is None:
+        print(f"🧠 loading {EMBEDDING_MODEL}...")
         _embedder = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     return _embedder
 
@@ -47,12 +48,15 @@ def get_reference_embeddings():
 
     if os.path.exists(EMBEDDINGS_CACHE):
         _reference_embeddings = np.load(EMBEDDINGS_CACHE)
+        print(f"🧠 loaded {len(_reference_embeddings)} cached reference embeddings from {EMBEDDINGS_CACHE}")
         return _reference_embeddings
 
     titles = [r["title"] for r in get_reference()]
+    print(f"🧠 embedding {len(titles)} reference exercises (one-time, cached afterward)...")
     vectors = normalize(np.array(get_embedder().embed_documents(titles), dtype=np.float32))
     np.save(EMBEDDINGS_CACHE, vectors)
     _reference_embeddings = vectors
+    print(f"🧠 reference embeddings cached to {EMBEDDINGS_CACHE}")
     return _reference_embeddings
 
 
