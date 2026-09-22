@@ -24,8 +24,11 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     CreateAlias, CreateAliasOperation, DeleteAlias, DeleteAliasOperation,
-    Distance, PayloadSchemaType, PointStruct, VectorParams,
+    Distance, FieldCondition, Filter, MatchAny, MatchValue, PayloadSchemaType,
+    PointIdsList, PointStruct, VectorParams,
 )
+
+from lazy import lazy
 
 load_dotenv()
 
@@ -48,22 +51,8 @@ FILTER_FIELDS = {
     "document_id": PayloadSchemaType.KEYWORD,
 }
 
-_client = None
-_embeddings = None
-
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = AsyncQdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"], timeout=60)
-    return _client
-
-
-def _get_embeddings():
-    global _embeddings
-    if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    return _embeddings
+_get_client = lazy(lambda: AsyncQdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"], timeout=60))
+_get_embeddings = lazy(lambda: HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL))
 
 
 async def _alias_target(client):
@@ -164,8 +153,6 @@ async def sync_document(doc_id, leaf_chunks):
     ponytail: single scroll page (limit 10_000) assumed to cover one
     document's chunks -- paginate via next_page_offset if that's ever not true.
     """
-    from qdrant_client.models import FieldCondition, Filter, MatchValue, PointIdsList
-
     client = _get_client()
     existing, _ = await client.scroll(
         collection_name=COLLECTION_ALIAS,
@@ -200,15 +187,12 @@ async def sync_document(doc_id, leaf_chunks):
 
 
 def _match(value):
-    from qdrant_client.models import MatchAny, MatchValue
     if isinstance(value, (list, tuple, set)):
         return MatchAny(any=list(value))
     return MatchValue(value=value)
 
 
 async def search(query_text, top_k=5, filters=None):
-    from qdrant_client.models import FieldCondition, Filter
-
     query_vector = await asyncio.to_thread(_get_embeddings().embed_query, query_text)
     qdrant_filter = None
     if filters:

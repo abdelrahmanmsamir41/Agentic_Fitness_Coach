@@ -4,7 +4,7 @@ Lats), checked with word-boundary regex so e.g. "Cable" never fires a bare
 "ab" bodypart rule. These always win over whatever matching.py's similarity
 match would have said for the same field -- see exercise_reference/__init__.py.
 """
-import re
+from text_utils import compile_word_boundary_pattern
 
 # Ordered most-specific first -- first keyword hit wins, so e.g. "smith machine"
 # must be checked before the bare "machine" fallback at the bottom.
@@ -51,11 +51,22 @@ _TYPE_RULES = [
 ]
 
 
-def _first_rule_match(name, rules):
-    for keywords, value in rules:
-        for keyword in keywords:
-            if re.search(rf"\b{re.escape(keyword)}\b", name, re.IGNORECASE):
-                return value
+def _compile_rules(rules):
+    """One precompiled pattern per rule group instead of a fresh regex per
+    keyword per call -- same first-group-to-match-wins semantics, compiled
+    once at import time via the same helper ocr/preprocess.py uses."""
+    return [(compile_word_boundary_pattern(keywords), value) for keywords, value in rules]
+
+
+_EQUIPMENT_PATTERNS = _compile_rules(_EQUIPMENT_RULES)
+_BODYPART_PATTERNS = _compile_rules(_BODYPART_RULES)
+_TYPE_PATTERNS = _compile_rules(_TYPE_RULES)
+
+
+def _first_rule_match(name, patterns):
+    for pattern, value in patterns:
+        if pattern.search(name):
+            return value
     return None
 
 
@@ -64,13 +75,13 @@ def rule_based_fields(name):
     ref_type the name itself spells out. Missing keys mean "no rule fired,
     fall back to the similarity match" for that field."""
     fields = {}
-    equipment = _first_rule_match(name, _EQUIPMENT_RULES)
+    equipment = _first_rule_match(name, _EQUIPMENT_PATTERNS)
     if equipment:
         fields["ref_equipment"] = equipment
-    bodypart = _first_rule_match(name, _BODYPART_RULES)
+    bodypart = _first_rule_match(name, _BODYPART_PATTERNS)
     if bodypart:
         fields["ref_bodypart"] = bodypart
-    ex_type = _first_rule_match(name, _TYPE_RULES)
+    ex_type = _first_rule_match(name, _TYPE_PATTERNS)
     if ex_type:
         fields["ref_type"] = ex_type
     return fields

@@ -7,10 +7,11 @@ import re
 
 import pymupdf as fitz
 
+from text_utils import NUMBER as _NUMBER
+
 _MIN_NATIVE_LEN = 200  # below this, too little to be a real content page
 _WORD = re.compile(r"[A-Za-z؀-ۿ]{4,}")
 _MIN_WORD_OVERLAP = 0.5  # below this share of native's real words seen in OCR -> OCR missed the page
-_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _MIN_JUDGEABLE_LEN = 20  # shorter than this, too little to call garbled either way
 _MIN_ALPHA_RATIO = 0.3  # below this share of letters in non-whitespace chars -> looks garbled
 

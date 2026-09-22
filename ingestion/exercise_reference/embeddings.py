@@ -9,23 +9,23 @@ import os
 import numpy as np
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from lazy import lazy
+
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 REFERENCE_JSON = os.path.join(DATA_DIR, "exercises.json")
 EMBEDDINGS_CACHE = os.path.join(DATA_DIR, "exercises_embeddings.npy")
 
 EMBEDDING_MODEL = "BAAI/bge-m3"  # same as store_qdrant.py -- keep both in sync if this ever changes
 
-_embedder = None
-_reference = None
 _reference_embeddings = None
 
 
-def get_embedder():
-    global _embedder
-    if _embedder is None:
-        print(f"🧠 loading {EMBEDDING_MODEL}...")
-        _embedder = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    return _embedder
+def _load_embedder():
+    print(f"🧠 loading {EMBEDDING_MODEL}...")
+    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+
+get_embedder = lazy(_load_embedder)
 
 
 def normalize(vectors):
@@ -33,12 +33,12 @@ def normalize(vectors):
     return vectors / np.clip(norms, 1e-12, None)
 
 
-def get_reference():
-    global _reference
-    if _reference is None:
-        with open(REFERENCE_JSON, encoding="utf-8") as f:
-            _reference = json.load(f)
-    return _reference
+def _load_reference():
+    with open(REFERENCE_JSON, encoding="utf-8") as f:
+        return json.load(f)
+
+
+get_reference = lazy(_load_reference)
 
 
 def get_reference_embeddings():

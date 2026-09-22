@@ -1,11 +1,12 @@
 """Strip low-value noise from parsed markdown before it reaches the LLM, to
-cut token usage. Adapted from the image/table-attribute cleanup steps in
-C:\\Users\\apder\\Data-Entry\\pipelines\\ocr\\Cleaning\\clean.py -- only the
-parts relevant here (image tags, verbose HTML table styling); the
-currency/duration normalization in that file doesn't apply to fitness plans.
+cut token usage. Adapted from an earlier, more general OCR-cleanup pass --
+only the parts relevant here (image tags, verbose HTML table styling); that
+pass's currency/duration normalization doesn't apply to fitness plans.
 """
 import html
 import re
+
+from text_utils import compile_word_boundary_pattern
 
 from . import tables
 
@@ -52,10 +53,7 @@ _WU_SET = re.compile(r"\bW\.?U\.?\b(?=\s+sets?\b)", re.IGNORECASE)
 
 
 def _build_expander(mapping):
-    pattern = re.compile(
-        r"\b(" + "|".join(re.escape(k) for k in sorted(mapping, key=len, reverse=True)) + r")\b",
-        re.IGNORECASE,
-    )
+    pattern = compile_word_boundary_pattern(mapping)
 
     def _expand(match):
         expansion = mapping[match.group(0).upper()]
@@ -131,8 +129,4 @@ def _demo():
 
 if __name__ == "__main__":
     _demo()
-    with open(r"C:\Users\apder\Choose-Your-Trainer\ingestion_output\w-1401-260906-0202-abdelrhman-mohamed-samer\merged.md", "r", encoding="utf-8") as f:
-        text = f.read()
-    cleaned = strip_noise(text)
-    print(cleaned)
-    
+    print("ok")

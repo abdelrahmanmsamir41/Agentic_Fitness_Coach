@@ -1,7 +1,8 @@
-"""Orchestrates one document's ingestion: parse -> normalize+extract -> chunk
--> Mongo (manifests/parents/entities) -> Qdrant (leaf embeddings), run across
-every configured document in main(). Both stores are synced incrementally
-per document (store_mongo.sync_document / store_qdrant.sync_document) --
+"""Orchestrates one document's ingestion: parse -> normalize+extract ->
+enrich (day numbers, exercise-reference matching) -> chunk -> Mongo
+(manifests/parents/entities) -> Qdrant (leaf embeddings), run across every
+configured document in main(). Both stores are synced incrementally per
+document (store_mongo.sync_document / store_qdrant.sync_document) --
 unchanged chunks are never re-embedded, and a document left out of DOCUMENTS
 is simply not touched rather than dropped.
 """
@@ -17,6 +18,7 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 import chunks
 import store_mongo
 import store_qdrant
+from enrich import enrich_document
 from extraction.extract import extract_document
 from parse import parse_and_link
 
@@ -89,6 +91,7 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
         all_extractions = {int(k): v for k, v in cached.items()}
     else:
         all_extractions = await extract_document(doc_id, document_type, pages)
+        await enrich_document(doc_id, all_extractions)
         extractions_path.write_text(
             json.dumps({str(k): all_extractions[k] for k in sorted(all_extractions)}, ensure_ascii=False, indent=2),
             encoding="utf-8",
