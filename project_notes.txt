@@ -1,14 +1,7 @@
 dont forget to make a plan for handling missing text by ocr by filling it with the pymupdf parser or pymupdf-llm4 ( DONE — ocr/native_text.py: prefer_native_when_ocr_diverges + append_missing_native_numbers )    | DONE |
 
-rethink about the chunking strategy , and the extraction of cleaned text from gemini
-because , if the child parent  will not be used , then its not sueful to generate it 
-
-dont forget to enrich each extracted exercise from data d4 you already made 
-i setted d4  as a source of reference to excercises to give them more information for making retrieval more better and increase the accuracy, i wanat just to convert it to json and  make the logic that relates each excercise extracted correctly to the json (you should revise all the extraction process to ensure exercises are extracted correct with all other content in the pdf ), then handle the classification of each page using the promt you made.
-
-also you faster the relation process by some of words if mentioned in the query , but we will do this later,  like back, chest , or what is written below.
-
-make if exercise mentioned (machine, cable, dumbell ) to put them as a Equipment
+rethink about the chunking strategy , and 
+rethink aboutthe extraction of cleaned text from gemini because , if the child parent  will not be used , then its not sueful to generate it 
 
 make an llm as a judje to be certain of features of an exercise 
 --------------------------------------------------------------------------------------------------------------
@@ -33,8 +26,13 @@ also the odrder of text it self like a paragraph under a heading not its origina
 
 |------ consider using docling for handling html tables ( done )
 
+|------ dont forget to enrich each extracted exercise from data d4 you already made , i setted d4  as a source of reference to excercises to give them more information for making retrieval more better and increase the accuracy, i wanat just to convert it to json and  make the logic that relates each excercise extracted correctly to the json (you should revise all the extraction process to ensure exercises are extracted correct with all other content in the pdf ), then handle the classification of each page using the promt you made.
 
------- you should put in concideration  changes you made in preprocessing , actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
+|------ also you faster the relation process by some of words if mentioned in the query , but we will do this later,  like back, chest , or what is written below.( DONE )
+
+|------ make if exercise mentioned (machine, cable, dumbell ) to put them as a Equipment ( DONE )
+
+------ actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
 
 ------ my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
 
@@ -50,3 +48,8 @@ also the odrder of text it self like a paragraph under a heading not its origina
 put in consideration to enrich youtube links with metadata 
 
 ------ dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 
+
+
+Named in the text but correctly not implemented yet (YAGNI at current scale — 1 coach, handful of PDFs):
+Parallelization/Ray/Dask, distributed embedding, horizontal scaling, QPS/rate limiting, multi-level caching, cost/observability dashboards, page-by-page streaming for huge PDFs, hybrid search + reranking, CDC-style near-real-time indexing.
+Add these when: you're ingesting for multiple coaches concurrently (parallelization), a doc actually approaches thousands of pages (streaming), or retrieval quality visibly degrades as chunk count grows (hybrid+rerank) — not before.
