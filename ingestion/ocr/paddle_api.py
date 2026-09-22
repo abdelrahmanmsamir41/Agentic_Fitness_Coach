@@ -21,6 +21,7 @@ load_dotenv()
 JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 MODEL = "PaddleOCR-VL-1.6"
 POLL_INTERVAL_SECONDS = 5
+POLL_TIMEOUT_SECONDS = 1800  # a job stuck "running" this long is dead, not slow
 
 
 def _token():
@@ -68,6 +69,8 @@ async def _poll(client, job_id):
         data = resp.json()["data"]
         state = data["state"]
         elapsed = int(asyncio.get_event_loop().time() - start)
+        if elapsed > POLL_TIMEOUT_SECONDS:
+            raise RuntimeError(f"PaddleOCR-VL job {job_id} stuck in '{state}' after {elapsed}s, giving up")
         if state == "done":
             print(f"✅ job {job_id} done, extracted {data['extractProgress']['extractedPages']} pages ({elapsed}s)")
             return data["resultUrl"]["jsonUrl"]

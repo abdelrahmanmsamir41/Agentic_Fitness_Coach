@@ -1,7 +1,15 @@
 """Local MongoDB storage: document manifests (provenance), parent sections
 (full context for retrieval-time expansion), and extracted entities.
+
+sync_document() incrementally replaces one document's rows in the live
+collections directly (delete by document_id, then insert) -- no other
+document is ever touched, so a failure here is isolated to the one document
+being synced, not the whole corpus.
+ponytail: delete-then-insert isn't a single atomic step (a crash between the
+two briefly leaves this one document missing) -- acceptable since the blast
+radius is just that document and rerunning ingest.py for it fixes it; add a
+Mongo transaction (needs a replica set) if that gap ever bites.
 """
-import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -23,17 +31,6 @@ def _db():
     return _client["choose_your_trainer"]
 
 
-async def delete_all():
-    """Wipe every manifest/parent/entity -- mirrors store_qdrant.reindex()'s
-    delete-then-rebuild pattern, so a full reingestion starts from a clean
-    slate instead of piling up duplicates alongside old runs."""
-    results = await asyncio.gather(*(
-        _db()[name].delete_many({}) for name in ("documents", "parents", "entities")
-    ))
-    print(f"🍃 wiped Mongo: {sum(r.deleted_count for r in results)} document(s) deleted "
-          f"across documents/parents/entities")
-
-
 async def mark_previous_versions_inactive(client_id, document_type):
     result = await _db()["documents"].update_many(
         {"client_id": client_id, "document_type": document_type, "active": True},
@@ -43,17 +40,18 @@ async def mark_previous_versions_inactive(client_id, document_type):
         print(f"🍃 marked {result.modified_count} previous '{document_type}' version(s) inactive")
 
 
-async def save_document_manifest(manifest):
-    await _db()["documents"].insert_one(dict(manifest))
-    print(f"🍃 manifest for '{manifest['document_id']}' saved to Mongo")
-
-
-async def save_parents_and_entities(parents, leaf_chunks):
+async def sync_document(manifest, parents, leaf_chunks):
+    doc_id = manifest["document_id"]
+    db = _db()
+    await db["documents"].delete_many({"document_id": doc_id})
+    await db["parents"].delete_many({"document_id": doc_id})
+    await db["entities"].delete_many({"document_id": doc_id})
+    await db["documents"].insert_one(dict(manifest))
     if parents:
-        await _db()["parents"].insert_many([dict(p) for p in parents])
+        await db["parents"].insert_many([dict(p) for p in parents])
     if leaf_chunks:
-        await _db()["entities"].insert_many([dict(c) for c in leaf_chunks])
-    print(f"🍃 saved {len(parents)} parent(s) + {len(leaf_chunks)} entity chunk(s) to Mongo")
+        await db["entities"].insert_many([dict(c) for c in leaf_chunks])
+    print(f"🍃 [{doc_id}] synced: manifest + {len(parents)} parent(s) + {len(leaf_chunks)} entity chunk(s)")
 
 
 async def get_parent(parent_chunk_id):
