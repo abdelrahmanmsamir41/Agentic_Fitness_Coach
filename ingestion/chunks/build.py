@@ -15,7 +15,6 @@ def build_chunks(doc_id, document_type, page, extraction, index):
         "page_topic": extraction["page_topic"],
         "page": page["page_index"],
         "text": extraction["cleaned_text"],
-        "needs_review": extraction["needs_review"],
     }
 
     leaves = build_leaves(parent_chunk_id, doc_id, document_type, page, extraction)

@@ -29,9 +29,9 @@ COACH_ID = "coach_self"
 CLIENT_ID = "client_self"
 
 DOCUMENTS = [
-    # (REPO_ROOT / "splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114328.pdf", "training_plan"),
+    (REPO_ROOT / "splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114328.pdf", "training_plan"),
     # (REPO_ROOT / "Splits" / "belghamdi_splits" / "BelghamdiSplit-Anterior-x-Posterior.pdf", "training_plan"),
-    (REPO_ROOT / "splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
+    # (REPO_ROOT / "splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
     # (REPO_ROOT / "splits" / "D-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114305.pdf", "diet_plan"),
     # (REPO_ROOT / "splits" / "Recipes E-Book _260909_114355.pdf", "recipe_book"),
 ]
@@ -104,8 +104,7 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
         store_mongo.sync_document(manifest, all_parents, all_leaves),
         store_qdrant.sync_document(doc_id, all_leaves),
     )
-    print(f"✅ [{doc_id}] {len(pages)} pages, {len(all_leaves)} leaf chunks, "
-          f"{sum(1 for l in all_leaves if l['needs_review'])} flagged for review")
+    print(f"✅ [{doc_id}] {len(pages)} pages, {len(all_leaves)} leaf chunks")
     return all_leaves
 
 

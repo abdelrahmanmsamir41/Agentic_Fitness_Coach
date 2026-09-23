@@ -16,7 +16,6 @@ class NutritionEntity(BaseModel):
 
 class NutritionSectionResult(BaseModel):
     page_topic: str = Field(description="Short label inferred from the page's own content, e.g. \"Breakfast\", \"Post-Workout Shake\" -- the page may have no heading of its own, so infer it from what's actually there")
-    cleaned_text: str = Field(description="Raw OCR text reconstructed into clean, readable Markdown prose")
     entities: List[NutritionEntity] = Field(description="Meal entries extracted from the page")
 
 
@@ -77,7 +76,6 @@ class TrainingSectionResult(BaseModel):
     page_index: int = Field(description="The page marker number (from \"=== PAGE N ===\") this result corresponds to")
     page_topic: str = Field(description="Short label inferred from the page's own content, e.g. \"LEGS\", \"FAQS\", \"Chest & Back\" -- the page may have no heading of its own, so infer it from what's actually there")
     category: SectionCategory = Field(description="Which kind of content this page contains")
-    cleaned_text: str = Field(description="Raw OCR text reconstructed into clean, readable Markdown prose")
     weight_exercises: List[WeightExerciseEntity] = Field(default_factory=list, description="Exercise entries, only when category is \"weight_exercise\"")
     cardio_entries: List[CardioEntity] = Field(default_factory=list, description="Cardio entries, only when category is \"cardio\"")
     glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list, description="Term definitions, only when category is \"glossary\"")

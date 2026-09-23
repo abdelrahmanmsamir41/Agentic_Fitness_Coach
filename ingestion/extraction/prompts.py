@@ -5,26 +5,18 @@ instead of relying on the raw OCR heading, which is often missing or
 ambiguous.
 """
 
-TRAINING_BATCH_PROMPT = """You are cleaning up raw OCR output from pages of a fitness coach's
-training plan. Below are several pages, each marked with "=== PAGE N ===". Process every
-page independently and return exactly one result per page, with page_index set to that
-page's marker number.
+TRAINING_BATCH_PROMPT = """You are extracting structured data from raw OCR output from pages of
+a fitness coach's training plan. Below are several pages, each marked with "=== PAGE N ===".
+Process every page independently and return exactly one result per page, with page_index set to
+that page's marker number.
 
 {pages_block}
 
 For each page:
-1. Reconstruct fragmented OCR lines into clean, readable Markdown prose. If the raw text has a
-   "TABLE[type=data]" block, render it in cleaned_text as a full markdown table: a header row
-   built from the "columns:" line, a "| :--- | :--- | ..." alignment row under it, then one row
-   per line with cells separated by "|" -- e.g.:
-   | workout_name | warm_up_sets | working_sets | reps | rest | workout_video |
-   | :--- | :--- | :--- | :--- | :--- | :--- |
-   | Squat | 1 | 4 | 8-12 | 90s | [video](https://www.youtube.com/watch?v=aaa111) |
-   Fill the video-link column with the matching "[video](url)" link -- see the _Links: rule below.
-2. Infer a short page_topic label from the page's own content (e.g. "LEGS",
+1. Infer a short page_topic label from the page's own content (e.g. "LEGS",
    "FAQS", "Chest & Back", "Cardio") -- the page may have no heading of its
    own in the raw text; use your judgement from what's actually on the page.
-3. Classify this page into exactly one category, and extract entries into ONLY the list
+2. Classify this page into exactly one category, and extract entries into ONLY the list
    matching that category (leave every other list empty):
    - "weight_exercise": a table/list of gym exercises with sets/reps/rest.
    - "cardio": cardio activities (treadmill, running, cycling, ...) with duration/speed/incline.
@@ -45,15 +37,11 @@ OCR quirks to account for:
   in a "_Links:" block at the end of the page, top-to-bottom in the same order as the table rows
   above them. Match each link to the row/entity it belongs to by that order and by its anchor
   text (if a link doesn't clearly belong to any single row, attach it to the closest one rather
-  than dropping it), and put it in both that row's video_url field AND its cleaned_text table
-  cell as "[video](url)" (see step 1). A link tied to specific words rather than row order (e.g.
-  inline in a sentence) goes next to those words in cleaned_text instead. Once every link has
-  been placed this way, DROP the raw "_Links:" block itself from cleaned_text -- it must not
-  also appear at the end of the page, since that would duplicate every URL you just placed.
+  than dropping it), and put it in that row's video_url field.
 
 Rules: NEVER change any number, unit, set/rep count, RIR/RPE value, or URL from the raw
 text. Preserve exercise/food names, coach-specific terminology, and Arabic text as-is
-(do not translate). Only fix OCR fragmentation, typos, and formatting.
+(do not translate).
 
 Example -- input page:
 === PAGE 2 ===
@@ -73,18 +61,13 @@ Expected result for that page:
   "page_index": 2,
   "page_topic": "LEGS",
   "category": "weight_exercise",
-  "cleaned_text": "**LEGS**\\n\\n| workout_name | warm_up_sets | working_sets | reps | rest | workout_video |\\n| :--- | :--- | :--- | :--- | :--- | :--- |\\n| Squat | 1 | 4 | 8-12 | 90s | [video](https://www.youtube.com/watch?v=aaa111) |\\n| Leg Press | | 3 | 10 | 90s | [video](https://www.youtube.com/watch?v=bbb222) |",
   "weight_exercises": [
     {{"exercise": "Squat", "working_sets": {{"low": 4}}, "reps": {{"low": 8, "high": 12}}, "warmup_sets": {{"low": 1}}, "rir": null, "rest": "90s", "video_url": "https://www.youtube.com/watch?v=aaa111"}},
     {{"exercise": "Leg Press", "working_sets": {{"low": 3}}, "reps": {{"low": 10}}, "warmup_sets": {{"low": 0}}, "rir": null, "rest": "90s", "video_url": "https://www.youtube.com/watch?v=bbb222"}}
   ]
 }}
-Note: cleaned_text is a full markdown table (header + alignment row) copied faithfully from the
-raw table, including blank cells (Leg Press's warm_up_sets stays blank, not "0") -- with each
-"_Links:" URL placed in its row's video_url AND its table cell by row order. In the structured
-weight_exercises field, though, a blank cell where a number is expected means {{"low": 0}}, not
-null (see Leg Press's warmup_sets below) -- that 0-vs-null interpretation only applies there, not
-to cleaned_text. A single number becomes {{"low": N}} with no "high"; a range "8-12" becomes
+Note: a blank cell where a number is expected means {{"low": 0}}, not null (see Leg Press's
+warmup_sets above). A single number becomes {{"low": N}} with no "high"; a range "8-12" becomes
 {{"low": 8, "high": 12}}; a non-numeric value like "AMRAP" or "to failure" becomes null instead.
 """
 

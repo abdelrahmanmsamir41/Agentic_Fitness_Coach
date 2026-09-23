@@ -66,7 +66,6 @@ def _make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, idx, su
         "day_number": day_number,
         "entity": entity,
         "embed_text": embed_text,
-        "needs_review": extraction["needs_review"],
     }
 
 

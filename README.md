@@ -9,7 +9,6 @@ This README documents the **ingestion pipeline** as it stands today (the query/c
 **Built and working:**
 - End-to-end PDF ingestion: OCR → structured LLM extraction → day-number resolution → canonical exercise-database enrichment → chunking → incremental storage in MongoDB + Qdrant.
 - Bilingual (Arabic/English) content handling throughout.
-- A data-loss safety net (`needs_review`) that catches numbers/URLs the LLM dropped or altered.
 - Incremental, per-document sync to both stores — re-ingesting one document never touches any other coach's or client's data, and unchanged content is never re-embedded.
 - A zero-downtime, verified rebuild path for Qdrant (`reindex()`) for the rare case of a full-corpus rebuild (e.g. changing embedding models).
 
@@ -35,18 +34,14 @@ flowchart TD
 
     G --> H["chunks.split into pages\n(one page = one unit, never merged)"]
     H --> I["Batch pages, 4 per call\n(_batch)"]
-    I --> J["Gemini 2.5 Flash\nwith_structured_output(TrainingBatchResult)\n(TRAINING_BATCH_PROMPT: table→compact-then-full-markdown\nrules, blank-cell='0' rule, video-link placement,\nOCR-quirk handling)"]
-    J --> K["_match_batch_results()\nmatch each result back to its page\nby page_index (order isn't guaranteed)"]
-    K --> L{"needs_review check:\ndo raw-text numbers/URLs\n(minus digits embedded in URLs)\nsurvive in cleaned_text?"}
-    L -- "no, data looks lost" --> M["fall back to raw OCR text\nfor that page, flag needs_review"]
-    L -- "yes" --> N["keep the LLM's cleaned_text"]
-    M --> O
-    N --> O[("extractions.json cache\n(one TrainingSectionResult per page)")]
+    I --> J["Gemini 2.5 Flash\nwith_structured_output(TrainingBatchResult)\n(TRAINING_BATCH_PROMPT: page_topic + category\nclassification, structured entity extraction,\nblank-cell='0' rule, video-link placement,\nOCR-quirk handling -- no text reconstruction)"]
+    J --> K["_match_batch_results()\nmatch each result back to its page\nby page_index (order isn't guaranteed);\ncleaned_text = that page's own preprocessed\nOCR markdown (pages.json), not model output"]
+    K --> O[("extractions.json cache\n(one TrainingSectionResult per page)")]
 
-    O --> P["assign_day_numbers()\nsecond, cheap Gemini call: page-topics only\n(not full text), matches each\nweight_exercise/cardio page to a\nDay N from the split-table page,\ncross-lingual (Arabic↔English topic phrasing)"]
+    O --> P["enrich.resolve_day_numbers()\nsecond, cheap Gemini call: page-topics only\n(not full text), matches each\nweight_exercise/cardio page to a\nDay N from the split-table page,\ncross-lingual (Arabic↔English topic phrasing)"]
     P --> Q["day_number stamped onto\nevery weight_exercise/cardio\npage's extraction"]
 
-    Q --> R["exercise_reference.match_exercises()\n(local, no LLM)"]
+    Q --> R["enrich.resolve_exercise_reference()\n-> exercise_reference.match_exercises()\n(local, no LLM)"]
     R --> R1["rules.py: gazetteer keyword rules\n(word-boundary regex; 'Cable lat pullover'\n→ equipment=Cable, bodypart=Lats;\nalways wins when it fires)"]
     R --> R2["embeddings.py + matching.py:\nBGE-m3 cosine top-5 candidates\n→ RapidFuzz re-rank\n→ accept only ≥0.72 combined score"]
     R1 & R2 --> S["ref_type / ref_bodypart / ref_equipment /\nref_level / ref_match_score\nstamped onto each weight_exercise entity"]
@@ -75,18 +70,19 @@ flowchart TD
 
 ### 2. Structured extraction (`extraction/extract.py`, `extraction/models.py`, `extraction/prompts.py`)
 - Pages are batched **4 per Gemini call** (`PAGES_PER_LLM_CALL`), not one call per page — cuts LLM call count roughly 5x. Each page is tagged with `page_index` in the prompt so the model's response can be matched back to its source page even if it reorders or drops one.
-- Schema (`TrainingSectionResult`, Pydantic + `with_structured_output`): a `category` (`weight_exercise` / `cardio` / `glossary` / `advice` / `program_structure` / `marketing` / `other`), category-specific entity lists, and `cleaned_text` (a full markdown reconstruction, kept byte-faithful to the raw table including blank cells).
+- Schema (`TrainingSectionResult`, Pydantic + `with_structured_output`): a `category` (`weight_exercise` / `cardio` / `glossary` / `advice` / `program_structure` / `marketing` / `other`) plus category-specific entity lists — the model only classifies and extracts structured fields, it doesn't reconstruct page text.
+- `cleaned_text` is **not model output**: it's set directly from that page's own preprocessed OCR markdown (`ocr/preprocess.py`'s `strip_noise` output, i.e. what's already in `pages.json`), which turned out to need no further LLM cleanup on top of it. It still flows through the rest of the pipeline (parent record text, fallback "section" leaves) exactly as before.
 - `NumberRange {low, high}` replaces loose strings for sets/reps/RIR/speed/incline — a single number becomes `{low: N}`, a range becomes `{low, high}`, a non-numeric value ("AMRAP", "to failure") becomes `null`, and a genuinely blank table cell becomes `{low: 0}` (the model is taught the difference between "no value written" and "not applicable").
-- **`needs_review` safety net**: diffs number-tokens and URLs between the raw OCR text and the model's `cleaned_text` (URLs' own embedded digits — video IDs, `index=15` — are excluded from the number-diff so they don't cause false positives). If real data looks lost, the raw OCR text is used verbatim instead of the model's cleaned version, and the page is flagged.
-- **Day-number resolution** (`assign_day_numbers`): a second, much cheaper Gemini call — page *topics* only, not full page text — matches every `weight_exercise`/`cardio` page to a `Day N` from the plan's split-table page, handling cross-lingual topic phrasing (e.g. an Arabic page topic matching an English day label). Pages that don't clearly belong to any day are left unassigned rather than guessed.
 - Both the raw OCR pages and the LLM extraction output are cached (`extractions.json`) so a re-run skips Gemini entirely if nothing changed.
 
-### 3. Canonical exercise enrichment (`exercise_reference/`)
-Purely local — **no LLM call**. Every extracted exercise name is resolved against a static reference set (2,909 deduplicated rows from the public `megaGymDataset`) to attach canonical `type`/`bodypart`/`equipment`/`level` fields, via a two-layer funnel:
-1. **Gazetteer keyword rules** (`rules.py`): word-boundary regex over the exercise name ("Cable lat pullover" → `equipment=Cable`, `bodypart=Lats`). Near-certain precision when a rule fires, and always wins over whatever the similarity layer would have said for that field.
-2. **Hybrid similarity match** (`embeddings.py` + `matching.py`): BGE-m3 cosine similarity (same embedding model used for the vector store) proposes the top-5 candidates, re-ranked by a RapidFuzz string score; accepted only above a 0.72 combined threshold, otherwise nothing is attached rather than risking a wrong guess.
-
-Reference embeddings are computed once and cached to disk (`exercise_reference/data/exercises_embeddings.npy`, gitignored) — never recomputed on a normal ingestion run.
+### 3. Enrichment (`enrich.py`, `exercise_reference/`)
+Two independent post-extraction passes over one document's `all_extractions`, run by `enrich.enrich_document()` after `extract_document()` returns:
+- **Day-number resolution** (`enrich.resolve_day_numbers` → `assign_day_numbers`): a second, much cheaper Gemini call — page *topics* only, not full page text — matches every `weight_exercise`/`cardio` page to a `Day N` from the plan's split-table page, handling cross-lingual topic phrasing (e.g. an Arabic page topic matching an English day label). Pages that don't clearly belong to any day are left unassigned rather than guessed.
+- **Canonical exercise enrichment** (`enrich.resolve_exercise_reference` → `exercise_reference/`): purely local — **no LLM call**. Every extracted exercise name is resolved against a static reference set (2,909 deduplicated rows from the public `megaGymDataset`) to attach canonical `type`/`bodypart`/`equipment`/`level` fields, via a two-layer funnel:
+  1. **Gazetteer keyword rules** (`rules.py`): word-boundary regex over the exercise name ("Cable lat pullover" → `equipment=Cable`, `bodypart=Lats`). Near-certain precision when a rule fires, and always wins over whatever the similarity layer would have said for that field.
+  2. **Hybrid similarity match** (`embeddings.py` + `matching.py`): BGE-m3 cosine similarity (same embedding model used for the vector store) proposes the top-5 candidates, re-ranked by a RapidFuzz string score; accepted only above a 0.72 combined threshold, otherwise nothing is attached rather than risking a wrong guess.
+  
+  Reference embeddings are computed once and cached to disk (`exercise_reference/data/exercises_embeddings.npy`, gitignored) — never recomputed on a normal ingestion run.
 
 ### 4. Chunking (`chunks/`)
 - One **parent** record per page (full-page context, for retrieval-time expansion) and one **leaf** record per structured entity (exercise, cardio entry, glossary term, advice item), each carrying a synthesized `embed_text` string built from its own fields (not from the page's full prose) plus a `day_number`-aware prefix ("Day 1 - Chest & Back > Incline chest press: ...").
@@ -104,6 +100,9 @@ ingestion/
 ├── ingest.py                  # orchestrates one document end-to-end; main() loops DOCUMENTS
 ├── parse.py                   # OCR + links + native-text merge
 ├── links.py                   # PyMuPDF hyperlink extraction/merge
+├── enrich.py                  # post-extraction: day-number resolution + exercise-reference matching
+├── lazy.py                    # lazy-singleton helper (shared by store_qdrant/extract/embeddings)
+├── text_utils.py              # shared regex helpers (NUMBER, word-boundary pattern builder)
 ├── ocr/
 │   ├── paddle_api.py          # PaddleOCR-VL cloud job submission/polling
 │   ├── autocrop.py            # trim scan margins before OCR
@@ -111,7 +110,7 @@ ingestion/
 │   ├── preprocess.py          # OCR text cleanup (abbreviation normalization, etc.)
 │   └── tables.py              # raw HTML tables -> compact TABLE[...] text
 ├── extraction/
-│   ├── extract.py             # batched Gemini calls, day-number resolution, needs_review
+│   ├── extract.py             # batched Gemini calls: category classification + structured entity extraction
 │   ├── models.py              # Pydantic schemas (TrainingSectionResult, NumberRange, ...)
 │   └── prompts.py             # TRAINING_BATCH_PROMPT, DAY_ASSIGNMENT_PROMPT
 ├── exercise_reference/

@@ -11,13 +11,11 @@ layer (exercise_reference's local entity-linking has no LLM in it at all).
 """
 import asyncio
 import os
-import re
 
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from lazy import lazy
-from text_utils import NUMBER as _NUMBER
 
 from . import prompts
 from .models import NutritionSectionResult, TrainingBatchResult, TRAINING_LIST_FIELDS
@@ -28,58 +26,33 @@ MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 LLM_CONCURRENCY = 4  # cap on concurrent Gemini calls, to avoid rate-limit errors
 PAGES_PER_LLM_CALL = 4  # pages batched into one extraction call, instead of one call per page
 
-_URL = re.compile(r"https?://\S+")
-
 _llm_semaphore = asyncio.Semaphore(LLM_CONCURRENCY)
 
 get_model = lazy(lambda: ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.1))
 
 
-def _training_item(result):
-    item = {"category": result.category, "page_topic": result.page_topic, "cleaned_text": result.cleaned_text}
+def _training_item(result, raw_text):
+    # cleaned_text is the page's own OCR markdown (already normalized in ocr/preprocess.py),
+    # not model output -- the model only returns category/page_topic/entities now.
+    item = {"category": result.category, "page_topic": result.page_topic, "cleaned_text": raw_text}
     for field in TRAINING_LIST_FIELDS:
         item[field] = [e.model_dump() for e in getattr(result, field)]
     return item
-
-
-def _numbers_and_urls(text):
-    """Distinct tokens as sets, not multisets -- repeat counts can legitimately change.
-    Numbers are counted outside of URLs only -- a URL's own digits (video ids, index=15,
-    ...) aren't "data" the needs_review check should require cleaned_text to reproduce."""
-    urls = set(_URL.findall(text))
-    numbers = set(_NUMBER.findall(_URL.sub(" ", text)))
-    return numbers, urls
-
-
-def _build_result(raw_text, item):
-    raw_numbers, raw_urls = _numbers_and_urls(raw_text)
-    clean_numbers, clean_urls = _numbers_and_urls(item["cleaned_text"])
-    needs_review = raw_numbers != clean_numbers or raw_urls != clean_urls
-
-    return {
-        **item,
-        "cleaned_text": raw_text if needs_review else item["cleaned_text"],
-        "needs_review": needs_review,
-    }
 
 
 def _match_batch_results(raw_text_by_page, page_results):
     """Map the model's per-page results back onto the pages that were sent,
     by page_index rather than list position -- the model isn't guaranteed to
     preserve order or return every page."""
-    results = {}
-    for page_result in page_results:
-        item = _training_item(page_result)
-        raw_text = raw_text_by_page.get(page_result.page_index, "")
-        results[page_result.page_index] = _build_result(raw_text, item)
+    results = {
+        page_result.page_index: _training_item(page_result, raw_text_by_page.get(page_result.page_index, ""))
+        for page_result in page_results
+    }
 
     missing = set(raw_text_by_page) - set(results)
     if missing:
         raise ValueError(f"batch extraction missing pages {sorted(missing)}")
 
-    flagged = sorted(p for p, r in results.items() if r["needs_review"])
-    if flagged:
-        print(f"🚩 pages {flagged} flagged needs_review (cleaned text lost numbers/URLs)")
     return results
 
 
