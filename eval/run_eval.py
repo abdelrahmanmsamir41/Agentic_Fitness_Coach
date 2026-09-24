@@ -2,7 +2,7 @@
 chunk matching `expected_contains` (a substring checked against the chunk's
 embed_text) shows up in the top-5 Qdrant hits.
 
-Populate eval_questions.json AFTER the first `python ingestion/ingest.py`
+Populate eval_questions.json AFTER the first `python Ingestion_Pipeline/ingest.py`
 run -- expected content depends on what's actually in the real PDFs.
 """
 import asyncio
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ingestion"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Ingestion_Pipeline"))
 import store_qdrant  # noqa: E402
 
 EVAL_FILE = Path(__file__).resolve().parent / "eval_questions.json"

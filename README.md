@@ -104,7 +104,7 @@ Two independent post-extraction passes over one document's `all_extractions`, ru
 ## Project structure
 
 ```
-ingestion/
+Ingestion_Pipeline/
 ├── ingest.py                  # orchestrates one document end-to-end; main() loops DOCUMENTS
 ├── parse.py                   # OCR + links + native-text merge
 ├── links.py                   # PyMuPDF hyperlink extraction/merge
@@ -139,7 +139,7 @@ ingestion/
 Requires `.env` with `GOOGLE_API_KEY`, `PADDLEOCR_TOKEN`, `QDRANT_URL`, `QDRANT_API_KEY`, and `MONGODB_URL` (defaults to `mongodb://localhost:27017/`).
 
 ```bash
-cd ingestion
+cd Ingestion_Pipeline
 python ingest.py
 ```
 

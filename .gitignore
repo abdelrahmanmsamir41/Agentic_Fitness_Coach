@@ -25,4 +25,4 @@ archive
 subtitles
 tests
 *.ipynb
-ingestion/exercise_reference/data/*.npy
+Ingestion_Pipeline/exercise_reference/data/*.npy
