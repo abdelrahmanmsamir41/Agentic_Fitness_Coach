@@ -18,7 +18,7 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 import chunks
 import store_mongo
 import store_qdrant
-from enrich import enrich_document
+from enrich import build_program_view, enrich_document
 from extraction.extract import extract_document
 from parse import parse_and_link
 
@@ -97,6 +97,9 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
             encoding="utf-8",
         )
         print(f"📦 [{doc_id}] LLM extraction output written to {extractions_path}")
+
+    program_view = build_program_view(all_extractions)
+    (doc_out_dir / "program.json").write_text(json.dumps(program_view, ensure_ascii=False, indent=2), encoding="utf-8")
 
     all_parents, all_leaves = chunks.build_all(doc_id, document_type, common, pages, all_extractions)
 

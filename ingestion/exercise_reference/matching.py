@@ -13,7 +13,7 @@ from .rules import rule_based_fields
 
 TOP_K = 5
 FUZZY_WEIGHT = 0.3
-THRESHOLD = 0.72
+THRESHOLD = 0.6
 
 
 def _similarity_match(query, query_vector, ref_vectors, reference):
@@ -21,9 +21,13 @@ def _similarity_match(query, query_vector, ref_vectors, reference):
     k = min(TOP_K, len(scores))
     top_idxs = np.argpartition(scores, -k)[-k:]
 
+    query_lower = query.lower()
     best_idx, best_score = None, -1.0
     for idx in top_idxs:
-        fuzzy = fuzz.token_sort_ratio(query, reference[idx]["title"]) / 100
+        # token_sort_ratio doesn't lowercase on its own -- "leg" vs "Leg" would
+        # otherwise mismatch at nearly every character and tank a genuinely
+        # correct match's fuzzy component for no real reason.
+        fuzzy = fuzz.token_sort_ratio(query_lower, reference[idx]["title"].lower()) / 100
         combined = (1 - FUZZY_WEIGHT) * float(scores[idx]) + FUZZY_WEIGHT * fuzzy
         if combined > best_score:
             best_idx, best_score = idx, combined
@@ -95,6 +99,21 @@ def _demo():
     # neither a rule nor a confident match -> nothing to add
     no_match = _resolve("Completely unrelated made-up thing", far_vector, ref_vectors, reference)
     assert no_match is None
+
+    # case must not affect the fuzzy tiebreak -- tied cosine (identical vector),
+    # so only the fuzzy term decides. Title-case "Seated Leg Curl" against
+    # query "Seated leg curl" scores 40/100 case-sensitively (worse than the
+    # wrong "Seated finger curl", 79/100) but 100/100 once both are lowercased
+    # -- this exact pairing is what shipped the real bug, a synthetic
+    # all-same-case example doesn't reproduce it.
+    tied_vector = _unit(np.array([1.0, 1.0], dtype=np.float32))
+    case_reference = [
+        {"title": "Seated Leg Curl", "type": "Strength", "bodypart": "Hamstrings", "equipment": "Machine", "level": "Beginner"},
+        {"title": "Seated finger curl", "type": "Strength", "bodypart": "Forearms", "equipment": "Barbell", "level": "Beginner"},
+    ]
+    case_vectors = np.array([tied_vector, tied_vector])
+    match = _resolve("Seated leg curl", tied_vector, case_vectors, case_reference)
+    assert match["ref_bodypart"] == "Hamstrings", "case difference must not lose to a same-case wrong title"
 
 
 if __name__ == "__main__":

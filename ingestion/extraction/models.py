@@ -28,7 +28,7 @@ class NutritionSectionResult(BaseModel):
 # not buried in a whole-section paragraph) instead of generic.
 
 SectionCategory = Literal[
-    "weight_exercise", "cardio", "glossary", "advice", "program_structure", "marketing", "other"
+    "weight_exercise", "cardio", "glossary", "advice", "program_structure", "rest_day", "marketing", "other"
 ]
 
 
@@ -75,12 +75,12 @@ class ProgramDayEntity(BaseModel):
 class TrainingSectionResult(BaseModel):
     page_index: int = Field(description="The page marker number (from \"=== PAGE N ===\") this result corresponds to")
     page_topic: str = Field(description="Short label inferred from the page's own content, e.g. \"LEGS\", \"FAQS\", \"Chest & Back\" -- the page may have no heading of its own, so infer it from what's actually there")
-    category: SectionCategory = Field(description="Which kind of content this page contains")
-    weight_exercises: List[WeightExerciseEntity] = Field(default_factory=list, description="Exercise entries, only when category is \"weight_exercise\"")
-    cardio_entries: List[CardioEntity] = Field(default_factory=list, description="Cardio entries, only when category is \"cardio\"")
-    glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list, description="Term definitions, only when category is \"glossary\"")
-    advice_items: List[AdviceEntity] = Field(default_factory=list, description="Advice entries, only when category is \"advice\"")
-    program_days: List[ProgramDayEntity] = Field(default_factory=list, description="Day/split entries, only when category is \"program_structure\"")
+    category: SectionCategory = Field(description="The page's dominant/primary kind of content -- not exclusive, see the list fields below")
+    weight_exercises: List[WeightExerciseEntity] = Field(default_factory=list, description="Exercise entries -- populate whenever the page has any, regardless of category")
+    cardio_entries: List[CardioEntity] = Field(default_factory=list, description="Cardio entries -- populate whenever the page has any, regardless of category")
+    glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list, description="Term definitions -- populate whenever the page has any, regardless of category")
+    advice_items: List[AdviceEntity] = Field(default_factory=list, description="Advice entries -- populate whenever the page has any, regardless of category")
+    program_days: List[ProgramDayEntity] = Field(default_factory=list, description="Day/split entries, only when category is \"program_structure\" (the plan's real multi-day split table -- not a standalone single-day \"rest_day\" page)")
 
 
 class TrainingBatchResult(BaseModel):

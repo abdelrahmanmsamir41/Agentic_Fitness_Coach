@@ -9,12 +9,15 @@ This README documents the **ingestion pipeline** as it stands today (the query/c
 **Built and working:**
 - End-to-end PDF ingestion: OCR → structured LLM extraction → day-number resolution → canonical exercise-database enrichment → chunking → incremental storage in MongoDB + Qdrant.
 - Bilingual (Arabic/English) content handling throughout.
+- Multi-category page extraction — a page's dominant `category` no longer gates which entity lists get populated; a page can genuinely contain more than one kind of content (e.g. advice text that also names a specific exercise) without losing either.
+- A dedicated `rest_day` category for standalone single-day rest dividers, resolved to a `day_number` through the exact same matching-against-the-split-table pipeline as `weight_exercise`/`cardio` pages — previously these landed inconsistently in either `program_structure` (with a bogus degenerate table entry) or `other`.
+- A day-by-day program view (`program.json`), reshaping the already-enriched extraction into `{day_number, target, weight_exercises, cardio_entries}` per day plus a `general_cardio` bucket for cardio not tied to a specific day — pure post-processing, no extra LLM call.
 - Incremental, per-document sync to both stores — re-ingesting one document never touches any other coach's or client's data, and unchanged content is never re-embedded.
 - A zero-downtime, verified rebuild path for Qdrant (`reindex()`) for the rare case of a full-corpus rebuild (e.g. changing embedding models).
 
 **Not yet built:**
 - The query-time chat/retrieval pipeline itself (`retrieve_demo.py` is a manual vector-search smoke test, not a chat interface).
-- A two-hop query resolution for "exercise on day N" style questions (day→page linkage already exists in the data; nothing consumes it at query time yet).
+- A two-hop query resolution for "exercise on day N" style questions — `program.json` now holds exactly this view, but nothing at query time consumes it yet; chunking/retrieval still stays page-based (see [Chunking](#4-chunking-chunks)).
 - Video-transcript enrichment (each exercise carries a `video_url`, currently unused beyond storage).
 
 ## Flow: from PDF upload to a queryable knowledge base
@@ -34,19 +37,22 @@ flowchart TD
 
     G --> H["chunks.split into pages\n(one page = one unit, never merged)"]
     H --> I["Batch pages, 4 per call\n(_batch)"]
-    I --> J["Gemini 2.5 Flash\nwith_structured_output(TrainingBatchResult)\n(TRAINING_BATCH_PROMPT: page_topic + category\nclassification, structured entity extraction,\nblank-cell='0' rule, video-link placement,\nOCR-quirk handling -- no text reconstruction)"]
-    J --> K["_match_batch_results()\nmatch each result back to its page\nby page_index (order isn't guaranteed);\ncleaned_text = that page's own preprocessed\nOCR markdown (pages.json), not model output"]
+    I --> J["Gemini 2.5 Flash\nwith_structured_output(TrainingBatchResult)\n(TRAINING_BATCH_PROMPT: page_topic + dominant\ncategory classification, structured entity\nextraction into EVERY matching list -- not\ngated to one category -- blank-cell='0' rule,\nvideo-link placement, OCR-quirk handling)"]
+    J --> K["_match_batch_results()\nmatch each result back to its page\nby page_index (order isn't guaranteed);\npage_text = that page's own preprocessed\nOCR markdown (pages.json), not model output"]
     K --> O[("extractions.json cache\n(one TrainingSectionResult per page)")]
 
-    O --> P["enrich.resolve_day_numbers()\nsecond, cheap Gemini call: page-topics only\n(not full text), matches each\nweight_exercise/cardio page to a\nDay N from the split-table page,\ncross-lingual (Arabic↔English topic phrasing)"]
-    P --> Q["day_number stamped onto\nevery weight_exercise/cardio\npage's extraction"]
+    O --> P["enrich.resolve_day_numbers()\nsecond, cheap Gemini call: page-topics only\n(not full text), matches every weight_exercise/\ncardio/other/rest_day page to a Day N from the\nsplit-table page, cross-lingual, disambiguating\nrepeated identical topics (e.g. several\n'REST DAY' pages) by document order"]
+    P --> Q["day_number stamped onto\nevery matched page's extraction"]
 
-    Q --> R["enrich.resolve_exercise_reference()\n-> exercise_reference.match_exercises()\n(local, no LLM)"]
+    Q --> R["enrich.resolve_exercise_reference()\n-> exercise_reference.match_exercises()\n(local, no LLM; collected by list contents,\nnot by category, so an exercise named on any\npage type still gets matched)"]
     R --> R1["rules.py: gazetteer keyword rules\n(word-boundary regex; 'Cable lat pullover'\n→ equipment=Cable, bodypart=Lats;\nalways wins when it fires)"]
-    R --> R2["embeddings.py + matching.py:\nBGE-m3 cosine top-5 candidates\n→ RapidFuzz re-rank\n→ accept only ≥0.72 combined score"]
+    R --> R2["embeddings.py + matching.py:\nBGE-m3 cosine top-5 candidates\n→ RapidFuzz re-rank (case-insensitive)\n→ accept only ≥0.6 combined score"]
     R1 & R2 --> S["ref_type / ref_bodypart / ref_equipment /\nref_level / ref_match_score\nstamped onto each weight_exercise entity"]
 
-    S --> T["chunks.build_all()\nfor every page:\n1 parent record (page-level context)\n+ N leaf records (one per structured\nentity: exercise/cardio/glossary/advice/\nsection-fallback), each with a\nsynthesized embed_text string"]
+    S --> S1["enrich.build_program_view()\npure reshape, no LLM: groups every page's\nweight_exercises/cardio_entries under its\nresolved day_number; unassigned cardio goes\nto general_cardio instead of being duplicated\nor attached to a rest day"]
+    S1 --> S2[("program.json\n{days: [...], general_cardio: [...]}")]
+
+    S --> T["chunks.build_all()\nfor every page:\n1 parent record (page-level context)\n+ N leaf records (one per structured\nentity: exercise/cardio/glossary/advice/\nsection-fallback -- a page can produce\nleaves of more than one type now), each\nwith a synthesized embed_text string"]
 
     T --> U["store_mongo.sync_document()\ndelete this document_id's rows,\nre-insert manifest + parents + entities\n(other documents untouched)"]
     T --> V["store_qdrant.sync_document()\ncontent-hash diff per chunk:\nunchanged → skip re-embedding\nchanged/new → BGE-m3 embed + upsert\nno-longer-produced → delete by point id"]
@@ -70,23 +76,25 @@ flowchart TD
 
 ### 2. Structured extraction (`extraction/extract.py`, `extraction/models.py`, `extraction/prompts.py`)
 - Pages are batched **4 per Gemini call** (`PAGES_PER_LLM_CALL`), not one call per page — cuts LLM call count roughly 5x. Each page is tagged with `page_index` in the prompt so the model's response can be matched back to its source page even if it reorders or drops one.
-- Schema (`TrainingSectionResult`, Pydantic + `with_structured_output`): a `category` (`weight_exercise` / `cardio` / `glossary` / `advice` / `program_structure` / `marketing` / `other`) plus category-specific entity lists — the model only classifies and extracts structured fields, it doesn't reconstruct page text.
-- `cleaned_text` is **not model output**: it's set directly from that page's own preprocessed OCR markdown (`ocr/preprocess.py`'s `strip_noise` output, i.e. what's already in `pages.json`), which turned out to need no further LLM cleanup on top of it. It still flows through the rest of the pipeline (parent record text, fallback "section" leaves) exactly as before.
+- Schema (`TrainingSectionResult`, Pydantic + `with_structured_output`): a `category` (`weight_exercise` / `cardio` / `glossary` / `advice` / `program_structure` / `rest_day` / `marketing` / `other`) plus entity lists — the model only classifies and extracts structured fields, it doesn't reconstruct page text. `category` is the page's *dominant* type, not an exclusive gate: every list gets populated with whatever content actually matches it, so a page can legitimately contain more than one kind of content (e.g. mostly advice text that also names one exercise). `program_structure` is reserved for the real multi-day split table; a standalone page marking just one day as rest (no table of other days) is `rest_day` instead — previously both landed in `program_structure`, inconsistently, with the single-day page getting a degenerate one-entry `program_days`.
+- `page_text` is **not model output**: it's set directly from that page's own preprocessed OCR markdown (`ocr/preprocess.py`'s `strip_noise` output, i.e. what's already in `pages.json`), which turned out to need no further LLM cleanup on top of it. It still flows through the rest of the pipeline (parent record text, fallback "section" leaves) exactly as before.
 - `NumberRange {low, high}` replaces loose strings for sets/reps/RIR/speed/incline — a single number becomes `{low: N}`, a range becomes `{low, high}`, a non-numeric value ("AMRAP", "to failure") becomes `null`, and a genuinely blank table cell becomes `{low: 0}` (the model is taught the difference between "no value written" and "not applicable").
 - Both the raw OCR pages and the LLM extraction output are cached (`extractions.json`) so a re-run skips Gemini entirely if nothing changed.
 
 ### 3. Enrichment (`enrich.py`, `exercise_reference/`)
-Two independent post-extraction passes over one document's `all_extractions`, run by `enrich.enrich_document()` after `extract_document()` returns:
-- **Day-number resolution** (`enrich.resolve_day_numbers` → `assign_day_numbers`): a second, much cheaper Gemini call — page *topics* only, not full page text — matches every `weight_exercise`/`cardio` page to a `Day N` from the plan's split-table page, handling cross-lingual topic phrasing (e.g. an Arabic page topic matching an English day label). Pages that don't clearly belong to any day are left unassigned rather than guessed.
-- **Canonical exercise enrichment** (`enrich.resolve_exercise_reference` → `exercise_reference/`): purely local — **no LLM call**. Every extracted exercise name is resolved against a static reference set (2,909 deduplicated rows from the public `megaGymDataset`) to attach canonical `type`/`bodypart`/`equipment`/`level` fields, via a two-layer funnel:
-  1. **Gazetteer keyword rules** (`rules.py`): word-boundary regex over the exercise name ("Cable lat pullover" → `equipment=Cable`, `bodypart=Lats`). Near-certain precision when a rule fires, and always wins over whatever the similarity layer would have said for that field.
-  2. **Hybrid similarity match** (`embeddings.py` + `matching.py`): BGE-m3 cosine similarity (same embedding model used for the vector store) proposes the top-5 candidates, re-ranked by a RapidFuzz string score; accepted only above a 0.72 combined threshold, otherwise nothing is attached rather than risking a wrong guess.
+Two independent post-extraction passes over one document's `all_extractions`, run by `enrich.enrich_document()` after `extract_document()` returns, plus a third pure reshape pass called separately from `ingest.py`:
+- **Day-number resolution** (`enrich.resolve_day_numbers` → `assign_day_numbers`): a second, much cheaper Gemini call — page *topics* only, not full page text — matches every `weight_exercise`/`cardio`/`other`/`rest_day` page (`_is_day_candidate`) to a `Day N` from the plan's real split-table page (`_is_split_table`: a `program_structure` page with more than one day entry — a `rest_day` page can never be mistaken for the table itself, since that's a separate category now). Handles cross-lingual topic phrasing (e.g. an Arabic page topic matching an English day label), and when multiple days share an identical description (several pages all just "REST DAY"), disambiguates by document order rather than colliding them onto one day or leaving them unresolved. Pages that don't clearly belong to any day are left unassigned rather than guessed.
+- **Canonical exercise enrichment** (`enrich.resolve_exercise_reference` → `exercise_reference/`): purely local — **no LLM call**. Every extracted exercise name (collected by list contents across all pages, not gated by category) is resolved against a static reference set (2,909 deduplicated rows from the public `megaGymDataset`) to attach canonical `type`/`bodypart`/`equipment`/`level` fields, via a two-layer funnel:
+  1. **Gazetteer keyword rules** (`rules.py`): word-boundary regex over the exercise name ("Cable lat pullover" → `equipment=Cable`, `bodypart=Lats`). Near-certain precision when a rule fires, and always wins over whatever the similarity layer would have said for that field — so a rule needs to be genuinely unambiguous, or it'll silently overwrite a correct similarity match (a `"grip"` → Forearms rule used to fire on any "wide grip"/"close grip" exercise regardless of actual bodypart; removed).
+  2. **Hybrid similarity match** (`embeddings.py` + `matching.py`): BGE-m3 cosine similarity (same embedding model used for the vector store) proposes the top-5 candidates, re-ranked by a RapidFuzz string score (both sides lowercased before comparing — `token_sort_ratio` doesn't normalize case on its own, and a correct match differing only in capitalization could otherwise score worse than a same-case wrong one); accepted only above a 0.6 combined threshold, otherwise nothing is attached rather than risking a wrong guess.
   
   Reference embeddings are computed once and cached to disk (`exercise_reference/data/exercises_embeddings.npy`, gitignored) — never recomputed on a normal ingestion run.
+- **Day-by-day program view** (`enrich.build_program_view`, called from `ingest.py` after both passes above): a pure reshape of the already-enriched `all_extractions`, no LLM and nothing mutated. Every split-table day gets the `weight_exercises`/`cardio_entries` pulled from whichever pages resolved to its `day_number` (a rest day naturally ends up with empty lists); cardio with no resolved `day_number` goes into a separate `general_cardio` list instead of being duplicated onto every training day or attached to a rest day. Written to `ingestion_output/<doc_id>/program.json`. This is an additional view for understanding the whole week at once — it doesn't feed or replace `chunks.build_all`, which stays page-based (see below).
 
 ### 4. Chunking (`chunks/`)
-- One **parent** record per page (full-page context, for retrieval-time expansion) and one **leaf** record per structured entity (exercise, cardio entry, glossary term, advice item), each carrying a synthesized `embed_text` string built from its own fields (not from the page's full prose) plus a `day_number`-aware prefix ("Day 1 - Chest & Back > Incline chest press: ...").
-- A page with no structured entities (prose-only, category `other`) falls back to one generic "section" leaf built from `cleaned_text`. A `marketing` page and the `program_structure` page itself produce no leaves at all — the latter's day/target mapping only ever exists to stamp `day_number` onto other pages.
+- One **parent** record per page (full-page context, for retrieval-time expansion) and one **leaf** record per structured entity (exercise, cardio entry, glossary term, advice item), each carrying a synthesized `embed_text` string built from its own fields (not from the page's full prose) plus a `day_number`-aware prefix ("Day 1 - Chest & Back > Incline chest press: ..."). `build_leaves` runs every category's builder and concatenates the results, rather than dispatching to a single one — a page can produce leaves of more than one `chunk_type` now, matching extraction no longer gating entity lists by a single category.
+- A page with none of the above (prose-only, e.g. category `other`) falls back to one generic "section" leaf built from `page_text`. A `marketing`, `program_structure`, or `rest_day` page produces no leaves at all — the latter two's day/target mapping only ever exists to stamp `day_number` onto other pages (see [Enrichment](#3-enrichment-enrichpy-exercise_reference)).
+- Chunking stays strictly page-based, independent of `enrich.build_program_view`'s day-by-day view (glossary/advice/marketing content has no natural place in a day-by-day structure, and other categories still need their own retrievable chunks).
 
 ### 5. Storage — incremental, isolated per document (`store_mongo.py`, `store_qdrant.py`)
 - **MongoDB**: `sync_document()` deletes and re-inserts only this `document_id`'s rows across `documents`/`parents`/`entities` — no other document is ever touched.
@@ -100,7 +108,7 @@ ingestion/
 ├── ingest.py                  # orchestrates one document end-to-end; main() loops DOCUMENTS
 ├── parse.py                   # OCR + links + native-text merge
 ├── links.py                   # PyMuPDF hyperlink extraction/merge
-├── enrich.py                  # post-extraction: day-number resolution + exercise-reference matching
+├── enrich.py                  # post-extraction: day-number resolution, exercise-reference matching, day-by-day program view
 ├── lazy.py                    # lazy-singleton helper (shared by store_qdrant/extract/embeddings)
 ├── text_utils.py              # shared regex helpers (NUMBER, word-boundary pattern builder)
 ├── ocr/
@@ -135,7 +143,7 @@ cd ingestion
 python ingest.py
 ```
 
-Edit `DOCUMENTS` in `ingest.py` to point at the PDF(s) to ingest. Re-running is safe and incremental — cached OCR/extraction output is reused, and only changed content triggers new embedding calls.
+Edit `DOCUMENTS` in `ingest.py` to point at the PDF(s) to ingest. Re-running is safe and incremental — cached OCR/extraction output is reused, and only changed content triggers new embedding calls. Each run writes `ingestion_output/<doc_id>/{pages,extractions,program,manifest}.json` and `merged.md`.
 
 To manually check what a query retrieves:
 

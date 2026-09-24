@@ -32,9 +32,9 @@ get_model = lazy(lambda: ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0.
 
 
 def _training_item(result, raw_text):
-    # cleaned_text is the page's own OCR markdown (already normalized in ocr/preprocess.py),
+    # page_text is the page's own OCR markdown (already normalized in ocr/preprocess.py),
     # not model output -- the model only returns category/page_topic/entities now.
-    item = {"category": result.category, "page_topic": result.page_topic, "cleaned_text": raw_text}
+    item = {"category": result.category, "page_topic": result.page_topic, "page_text": raw_text}
     for field in TRAINING_LIST_FIELDS:
         item[field] = [e.model_dump() for e in getattr(result, field)]
     return item

@@ -116,22 +116,28 @@ _CATEGORY_LEAF_BUILDERS = {
 
 
 def build_leaves(parent_chunk_id, doc_id, document_type, page, extraction):
-    """Returns the list of leaf records for one page: dispatches to the
-    category-specific builder, or falls back to a generic "section" leaf for
-    a prose-only page with no structured entities. A "marketing" page gets no
-    leaves at all -- nothing there is worth retrieving. Neither does
-    "program_structure": its day/target mapping is only extracted to stamp
-    day_number onto every weight_exercise/cardio leaf (see
-    extraction.extract._resolve_day_numbers) -- as its own leaf it would just
-    repeat what's already in every one of that day's exercise leaves."""
-    if extraction.get("category") in ("marketing", "program_structure"):
+    """Returns the list of leaf records for one page: runs every category
+    builder (a page's lists aren't gated by its single dominant category
+    anymore, see extraction/prompts.py, so more than one can be populated),
+    or falls back to a generic "section" leaf if none of them produced
+    anything. A "marketing" page gets no leaves at all -- nothing there is
+    worth retrieving. Neither does "program_structure" (its day/target
+    mapping only exists to stamp day_number onto other pages, see
+    enrich.resolve_day_numbers -- as its own leaf it would just repeat what's
+    already in every one of that day's exercise leaves) or "rest_day" (a
+    standalone rest-day page carries nothing of its own worth retrieving
+    either, same reasoning as program_structure)."""
+    if extraction.get("category") in ("marketing", "program_structure", "rest_day"):
         return []
 
-    builder = _CATEGORY_LEAF_BUILDERS.get(extraction.get("category"))
-    leaves = builder(parent_chunk_id, doc_id, document_type, page, extraction) if builder else []
+    leaves = [
+        leaf
+        for builder in _CATEGORY_LEAF_BUILDERS.values()
+        for leaf in builder(parent_chunk_id, doc_id, document_type, page, extraction)
+    ]
 
-    if not leaves and _substantive_length(extraction["cleaned_text"]) >= _MIN_SUBSTANTIVE_LEN:
-        embed_text = f"{extraction['page_topic']}: {_strip_links(extraction['cleaned_text'])}"
+    if not leaves and _substantive_length(extraction["page_text"]) >= _MIN_SUBSTANTIVE_LEN:
+        embed_text = f"{extraction['page_topic']}: {_strip_links(extraction['page_text'])}"
         leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, 0, "section", None, embed_text, "section"))
 
     return leaves

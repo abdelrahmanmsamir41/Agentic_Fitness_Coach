@@ -34,7 +34,7 @@ _BODYPART_RULES = [
     (("abductor", "abductors"), "Abductors"),
     (("bicep", "biceps"), "Biceps"),
     (("tricep", "triceps"), "Triceps"),
-    (("forearm", "forearms", "wrist", "grip"), "Forearms"),
+    (("forearm", "forearms", "wrist"), "Forearms"),
     (("shoulder", "shoulders", "delt", "delts", "deltoid"), "Shoulders"),
     (("chest", "pec", "pecs", "pectoral"), "Chest"),
     (("shrug", "shrugs"), "Traps"),
