@@ -1,9 +1,15 @@
-dont forget to make a plan for handling missing text by ocr by filling it with the pymupdf parser or pymupdf-llm4 ( DONE — ocr/native_text.py: prefer_native_when_ocr_diverges + append_missing_native_numbers )    | DONE |
 
-rethink about the chunking strategy , and 
-rethink aboutthe extraction of cleaned text from gemini because , if the child parent  will not be used , then its not sueful to generate it 
+rethink about the chunking strategy
 
 make an llm as a judje to be certain of features of an exercise 
+
+consider adding a describtion to excercises you have and also adding a data for cardio excercises.
+
+make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
+
+recall conversation about multiple projects and see their retrieval pipeline 
+
+next planis mastering langgraph and langsmith
 --------------------------------------------------------------------------------------------------------------
 
 
@@ -32,11 +38,17 @@ also the odrder of text it self like a paragraph under a heading not its origina
 
 |------ make if exercise mentioned (machine, cable, dumbell ) to put them as a Equipment ( DONE )
 
+|------ rethink aboutthe extraction of cleaned text from gemini because , if the child parent  will not be used , then its not sueful to generate it ( Done Removed )
+
+|------ dont forget to make a plan for handling missing text by ocr by filling it with the pymupdf parser or pymupdf-llm4 ( DONE — ocr/native_text.py: prefer_native_when_ocr_diverges + append_missing_native_numbers )    | DONE |
+
+------ tell me best practices of applying security layers in this project related to ai and backend, including asking irrelevant information.
+
 ------ actual pagetypes in the classify_page.txt, the prompt you will make to extract all these things you want to extract 
 
------- my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this project.
+------ my most valuable thing in this project is the frontend, user interactive and user experience that will make gym users actually really want to go to this product.
 
------- make a dataset containing names of exercises in egyptian language and its corresponding official exercise name 
+------ consider taking his injuries,supplements and other things to be considered in future into consideration.
 
 ------ dont forget to handle more then just pdfs 
 
@@ -45,9 +57,13 @@ also the odrder of text it self like a paragraph under a heading not its origina
 ------ i installed a library called ytdlp fetches original transcription with all autogenerates oines by youtube , and also extract the comments 
 
 ------ i want to add a feature that recommend a specific video url , or a part in a vlog for the query
-put in consideration to enrich youtube links with metadata 
+
+------ put in consideration to enrich youtube links with metadata 
 
 ------ dont lose hope on getting the transcriptions from metadata.json  from ytdlp  automatic_captions field 
+
+------ you should make a backend system and database that saves each user excercises/plans for tools later.
+
 
 
 Named in the text but correctly not implemented yet (YAGNI at current scale — 1 coach, handful of PDFs):
