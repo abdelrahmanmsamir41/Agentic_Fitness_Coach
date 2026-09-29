@@ -21,6 +21,7 @@ output-api
 output-api-PP-StructureV3
 .mds_output
 ingestion_output
+ingestion_llm_output
 archive
 subtitles
 tests
