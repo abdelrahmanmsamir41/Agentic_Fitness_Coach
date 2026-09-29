@@ -9,8 +9,11 @@ qdrant_client
 pydantic
 langchain_huggingface
 sentence-transformers
+numpy
 rapidfuzz
 pymongo>=4.9
 langchain_google_genai
 yt-dlp
 pytest
+langchain>=1.4
+langgraph-checkpoint-mongodb>=0.5

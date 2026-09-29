@@ -10,6 +10,21 @@ make a dataset containing names of exercises in egyptian language and its corres
 recall conversation about multiple projects and see their retrieval pipeline 
 
 next planis mastering langgraph and langsmith
+
+also langchain , finishing last ml course , algoexpert courses , exercises
+
+there is one issue , which is now there is no parents we could count on when depending on the llm instead of the OCR. 
+
+for retrieving , you just want to master the qdrant documentation, and the langchain retriever part, with using tools.
+then next step would be building the database sytem and the real backend workflow.
+
+make a general question agent.
+make a rewrite question agent.
+reduce the number of outcomed tokens from each tools
+
+how tio store pdfs
+
+
 --------------------------------------------------------------------------------------------------------------
 
 
