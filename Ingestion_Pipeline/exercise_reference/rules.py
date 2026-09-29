@@ -12,14 +12,14 @@ _EQUIPMENT_RULES = [
     (("e-z", "ez", "ez-bar", "ez bar", "ez curl"), "E-Z Curl Bar"),
     (("smith machine", "smith"), "Machine"),
     (("leverage machine",), "Machine"),
-    (("kettlebell", "kettlebells"), "Kettlebells"),
+    (("kettlebell", "kettlebells", "kb"), "Kettlebells"),
     (("medicine ball",), "Medicine Ball"),
     (("exercise ball", "stability ball", "swiss ball"), "Exercise Ball"),
     (("foam roll", "foam roller"), "Foam Roll"),
     (("band", "bands", "banded"), "Bands"),
     (("cable",), "Cable"),
-    (("dumbbell", "dumbbells", "dumbell", "dumbells"), "Dumbbell"),
-    (("landmine", "trap bar", "barbell", "barbells"), "Barbell"),
+    (("dumbbell", "dumbbells", "dumbell", "dumbells", "db", "dbs"), "Dumbbell"),
+    (("landmine", "trap bar", "barbell", "barbells", "bb"), "Barbell"),
     (("bodyweight", "body weight", "body-weight"), "Body Only"),
     (("rope",), "Rope"),
     (("machine",), "Machine"),
@@ -35,8 +35,8 @@ _BODYPART_RULES = [
     (("bicep", "biceps"), "Biceps"),
     (("tricep", "triceps"), "Triceps"),
     (("forearm", "forearms", "wrist"), "Forearms"),
-    (("shoulder", "shoulders", "delt", "delts", "deltoid"), "Shoulders"),
-    (("chest", "pec", "pecs", "pectoral"), "Chest"),
+    (("shoulder", "shoulders", "delt", "delts", "deltoid", "reverse fly", "rear fly"), "Shoulders"),
+    (("chest", "pec", "pecs", "pectoral", "fly", "flys", "flye", "flyes", "flies"), "Chest"),
     (("shrug", "shrugs"), "Traps"),
     (("lat", "lats", "pulldown", "pullover"), "Lats"),
     (("neck",), "Neck"),
@@ -96,6 +96,13 @@ def _demo():
     assert rule_based_fields("Cable crossover") == {"ref_equipment": "Cable"}
     assert rule_based_fields("Bodyweight squat") == {"ref_equipment": "Body Only"}
     assert rule_based_fields("Nordic hamstring curl") == {"ref_bodypart": "Hamstrings"}
+    # coach shorthand: "DB shoulder press" was tagged Bands by the similarity fallback before this
+    assert rule_based_fields("DB shoulder press") == {"ref_equipment": "Dumbbell", "ref_bodypart": "Shoulders"}
+    assert rule_based_fields("Decline fly machine")["ref_bodypart"] == "Chest"
+    assert rule_based_fields("Rear delt fly machine")["ref_bodypart"] == "Shoulders"
+    assert rule_based_fields("Reverse fly")["ref_bodypart"] == "Shoulders"
+    assert rule_based_fields("BB row")["ref_equipment"] == "Barbell"
+    assert rule_based_fields("KB swing")["ref_equipment"] == "Kettlebells"
     assert rule_based_fields("Completely unrelated made-up thing") == {}
 
 

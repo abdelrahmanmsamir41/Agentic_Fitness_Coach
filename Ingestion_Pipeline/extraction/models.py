@@ -1,7 +1,7 @@
 """Pydantic schemas for normalize+extract Gemini calls."""
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class NutritionEntity(BaseModel):
@@ -35,6 +35,13 @@ SectionCategory = Literal[
 class NumberRange(BaseModel):
     low: float = Field(description="The number itself, or the lower bound of a range")
     high: Optional[float] = Field(default=None, description="Upper bound if this is a range like \"8-12\"; omit for a single number")
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        # coaches write ranges either way ("1-0" RIR); the model copies them as written
+        if self.high is not None and self.high < self.low:
+            self.low, self.high = self.high, self.low
+        return self
 
 
 class WeightExerciseEntity(BaseModel):
