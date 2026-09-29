@@ -104,7 +104,7 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id):
     all_parents, all_leaves = chunks.build_all(doc_id, document_type, common, pages, all_extractions)
 
     await asyncio.gather(
-        store_mongo.sync_document(manifest, all_parents, all_leaves),
+        store_mongo.sync_document({**manifest, "program": program_view}, all_parents, all_leaves),
         store_qdrant.sync_document(doc_id, all_leaves),
     )
     print(f"✅ [{doc_id}] {len(pages)} pages, {len(all_leaves)} leaf chunks")

@@ -17,6 +17,9 @@ from pymongo import AsyncMongoClient
 
 load_dotenv()
 
+MONGODB_URL = os.environ.get("MONGODB_URL", "mongodb://localhost:27017/")
+DB_NAME = "choose_your_trainer"
+
 _client = None
 
 
@@ -27,8 +30,8 @@ def _db():
     # since it runs on asyncio directly instead of motor's thread-pool shim.
     global _client
     if _client is None:
-        _client = AsyncMongoClient(os.environ.get("MONGODB_URL", "mongodb://localhost:27017/"))
-    return _client["choose_your_trainer"]
+        _client = AsyncMongoClient(MONGODB_URL)
+    return _client[DB_NAME]
 
 
 async def mark_previous_versions_inactive(client_id, document_type):
@@ -56,3 +59,10 @@ async def sync_document(manifest, parents, leaf_chunks):
 
 async def get_parent(parent_chunk_id):
     return await _db()["parents"].find_one({"parent_chunk_id": parent_chunk_id}, {"_id": 0})
+
+
+async def get_active_program(client_id, document_type="training_plan"):
+    doc = await _db()["documents"].find_one(
+        {"client_id": client_id, "document_type": document_type, "active": True}, {"_id": 0, "program": 1}
+    )
+    return (doc or {}).get("program")

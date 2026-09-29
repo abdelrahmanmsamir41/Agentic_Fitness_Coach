@@ -20,7 +20,6 @@ import os
 import uuid
 
 from dotenv import load_dotenv
-from langchain_huggingface import HuggingFaceEmbeddings
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     CreateAlias, CreateAliasOperation, DeleteAlias, DeleteAliasOperation,
@@ -28,17 +27,13 @@ from qdrant_client.models import (
     PointIdsList, PointStruct, VectorParams,
 )
 
+from exercise_reference.embeddings import get_embedder as _get_embeddings  # one shared BGE-m3 instance
 from lazy import lazy
 
 load_dotenv()
 
 COLLECTION_ALIAS = "cyt_chunks"  # stable name search() reads through
 COLLECTION_PREFIX = "cyt_chunks_gen_"  # physical collections: cyt_chunks_gen_<uuid>
-# BGE-M3 over multilingual-e5-large (counselling-bot's choice): stronger on
-# interleaved Arabic/English content specifically (75.5% cross-lingual
-# Recall@100 vs e5-large's lighter-weight tradeoff), same 1024-dim output so
-# no Qdrant schema change, and an 8192-token window vs e5-large's 512.
-EMBEDDING_MODEL = "BAAI/bge-m3"
 VECTOR_SIZE = 1024
 UPSERT_BATCH_SIZE = 32  # one big upsert (~225 points) timed out against the remote cluster
 
@@ -52,7 +47,6 @@ FILTER_FIELDS = {
 }
 
 _get_client = lazy(lambda: AsyncQdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"], timeout=60))
-_get_embeddings = lazy(lambda: HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL))
 
 
 async def _alias_target(client):
