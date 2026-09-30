@@ -129,7 +129,7 @@ async def search_coach_notes(query: str, runtime: Runtime) -> list:
     """Search coach's prose notes; low score = not covered.
 
     Args:
-        query: The client's question.
+        query: Short English search query; translate Arabic, keep fitness terms like RIR.
     """
     return await plan_store.search_notes(runtime.context.client_id, query, TOP_K)
 
