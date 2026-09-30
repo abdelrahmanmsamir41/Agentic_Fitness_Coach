@@ -1,6 +1,7 @@
 """Post-extraction enrichment over one document's extractions: day-number resolution (one Gemini
 call over page topics), exercise-reference matching (local, no LLM), and the day-by-day program view.
 """
+from console import print_step
 import exercise_reference
 from extraction import prompts
 from extraction.extract import get_model
@@ -17,7 +18,7 @@ async def assign_day_numbers(day_entries, page_topics):
 
     structured_model = get_model().with_structured_output(DayAssignmentResult)
     prompt = prompts.build_day_assignment_prompt(day_entries, page_topics)
-    print(f"📅 assigning day numbers for {len(page_topics)} page(s) against {len(day_entries)} day(s)...")
+    print_step(f"📅 assigning day numbers for {len(page_topics)} page(s) against {len(day_entries)} day(s)...")
     result = await structured_model.ainvoke(prompt)
 
     valid_day_numbers = {day_number for day_number, _ in day_entries}
@@ -56,7 +57,7 @@ async def resolve_day_numbers(doc_id, all_extractions):
     )  # ascending page_index -- the prompt relies on this being real document order
     day_numbers = await assign_day_numbers(day_entries, page_topics)
     if day_numbers:
-        print(f"📅 [{doc_id}] assigned day numbers to {len(day_numbers)}/{len(page_topics)} page(s)")
+        print_step(f"📅 [{doc_id}] assigned day numbers to {len(day_numbers)}/{len(page_topics)} page(s)")
     for page, day_number in day_numbers.items():
         all_extractions[page]["day_number"] = day_number
 
@@ -79,7 +80,7 @@ def resolve_exercise_reference(doc_id, all_extractions):
         if match:
             entity.update(match)
             matched_count += 1
-    print(f"🏋️ [{doc_id}] matched {matched_count}/{len(exercises)} exercise(s) against the reference dataset")
+    print_step(f"🏋️ [{doc_id}] matched {matched_count}/{len(exercises)} exercise(s) against the reference dataset")
 
 
 def build_program_view(all_extractions):

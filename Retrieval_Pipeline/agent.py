@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -12,6 +13,9 @@ from langchain.agents.middleware import (ClearToolUsesEdit, ContextEditingMiddle
                                          wrap_model_call, wrap_tool_call)
 from langchain.chat_models import init_chat_model
 from langchain.messages import ToolMessage
+
+sys.path.append(str(Path(__file__).resolve().parent.parent / "Ingestion_Pipeline"))
+from console import print_step  # noqa: E402
 
 from . import plan_store
 from .context import TrainerContext
@@ -123,21 +127,22 @@ async def format_turn_stats(agent, thread_id):
 
 
 async def chat(client_id):
-    print("⏳ loading models...")
+    print_step("⏳ loading models...")
     await asyncio.to_thread(plan_store.warm_up)
     with plan_store.chat_checkpointer() as checkpointer:
         agent = build_agent(checkpointer)
         thread_id = client_id  # ponytail: one ongoing thread per client; pass a conversation id once the app has multiple chats
         checkpointer.delete_thread(thread_id)  # start clean: a killed session never reached the finally below
-        print(f"💬 chatting as {client_id} (empty line to quit)")
+        print_step(f"💬 chatting as {client_id} (empty line to quit)")
         try:
             while question := input("> ").strip():
                 async for text in stream_answer(agent, question, client_id, thread_id):
                     print(text, end="", flush=True)
-                print("\n" + await format_turn_stats(agent, thread_id) + "\n")
+                print()
+                print_step(await format_turn_stats(agent, thread_id))
         finally:
             checkpointer.delete_thread(thread_id)  # conversation over: drop its history; the 30-day TTL covers hard kills
-            print("🧹 chat history cleared")
+            print_step("🧹 chat history cleared")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import os
 import numpy as np
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from console import print_step
 from lazy import lazy
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -15,7 +16,7 @@ EMBEDDINGS_CACHE = os.path.join(DATA_DIR, "exercises_embeddings.npy")
 EMBEDDING_MODEL = "BAAI/bge-m3"  # same as store_qdrant.py -- keep both in sync if this ever changes
 
 def _load_embedder():
-    print(f"🧠 loading {EMBEDDING_MODEL}...")
+    print_step(f"🧠 loading {EMBEDDING_MODEL}...")
     return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
 
@@ -38,14 +39,14 @@ get_reference = lazy(_load_reference)
 def _load_reference_embeddings():
     if os.path.exists(EMBEDDINGS_CACHE):
         vectors = np.load(EMBEDDINGS_CACHE)
-        print(f"🧠 loaded {len(vectors)} cached reference embeddings from {EMBEDDINGS_CACHE}")
+        print_step(f"🧠 loaded {len(vectors)} cached reference embeddings from {EMBEDDINGS_CACHE}")
         return vectors
 
     titles = [row["title"] for row in get_reference()]
-    print(f"🧠 embedding {len(titles)} reference exercises (one-time, cached afterward)...")
+    print_step(f"🧠 embedding {len(titles)} reference exercises (one-time, cached afterward)...")
     vectors = normalize(np.array(get_embedder().embed_documents(titles), dtype=np.float32))
     np.save(EMBEDDINGS_CACHE, vectors)
-    print(f"🧠 reference embeddings cached to {EMBEDDINGS_CACHE}")
+    print_step(f"🧠 reference embeddings cached to {EMBEDDINGS_CACHE}")
     return vectors
 
 

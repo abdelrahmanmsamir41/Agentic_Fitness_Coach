@@ -8,6 +8,7 @@ from itertools import batched
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from console import print_step
 from lazy import lazy
 
 from . import prompts
@@ -54,7 +55,7 @@ async def extract_batch(document_type, pages):
 
     structured_model = get_model().with_structured_output(TrainingBatchResult)
     prompt = prompts.build_training_batch_prompt([(page["page_index"], page["markdown"].strip()) for page in pages])
-    print(f"💬 calling {MODEL_NAME} for pages {[page['page_index'] for page in pages]}...")
+    print_step(f"💬 calling {MODEL_NAME} for pages {[page['page_index'] for page in pages]}...")
     batch_result = await structured_model.ainvoke(prompt)
 
     raw_text_by_page = {page["page_index"]: page["markdown"].strip() for page in pages}
@@ -63,9 +64,9 @@ async def extract_batch(document_type, pages):
 
 async def _extract_one_batch(doc_id, document_type, batch_num, total_batches, pages):
     async with _llm_semaphore:
-        print(f"🤖 [{doc_id}] extracting batch {batch_num}/{total_batches} ({len(pages)} pages)...")
+        print_step(f"🤖 [{doc_id}] extracting batch {batch_num}/{total_batches} ({len(pages)} pages)...")
         extraction_by_page = await extract_batch(document_type, pages)
-    print(f"✅ [{doc_id}] batch {batch_num}/{total_batches} done")
+    print_step(f"✅ [{doc_id}] batch {batch_num}/{total_batches} done")
     return extraction_by_page
 
 
@@ -73,7 +74,7 @@ async def extract_document(doc_id, document_type, pages):
     """Runs extract_batch over PAGES_PER_LLM_CALL-sized batches, at most LLM_CONCURRENCY in flight.
     pages: list of {"page_index": int, "markdown": str}. Returns {page: extraction}."""
     batches = list(batched(pages, PAGES_PER_LLM_CALL))
-    print(f"🤖 [{doc_id}] running LLM extraction on {len(batches)} batches ({LLM_CONCURRENCY} concurrent)...")
+    print_step(f"🤖 [{doc_id}] running LLM extraction on {len(batches)} batches ({LLM_CONCURRENCY} concurrent)...")
     results = await asyncio.gather(*(
         _extract_one_batch(doc_id, document_type, batch_number, len(batches), batch)
         for batch_number, batch in enumerate(batches, start=1)

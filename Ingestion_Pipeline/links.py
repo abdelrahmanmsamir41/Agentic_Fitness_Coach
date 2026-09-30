@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import pymupdf as fitz
 
+from console import print_step
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
@@ -31,7 +33,7 @@ def extract_links(pdf_path):
         links_by_page[page.number] = entries
     doc.close()
     total_links = sum(len(entries) for entries in links_by_page.values())
-    print(f"🔗 extracted {total_links} link(s) across {len(links_by_page)} page(s)")
+    print_step(f"🔗 extracted {total_links} link(s) across {len(links_by_page)} page(s)")
     return links_by_page
 
 

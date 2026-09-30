@@ -15,6 +15,7 @@ import os
 from dotenv import load_dotenv
 from pymongo import AsyncMongoClient
 
+from console import print_step
 from lazy import lazy
 
 load_dotenv()
@@ -36,7 +37,7 @@ async def mark_previous_versions_inactive(client_id, document_type):
         {"$set": {"active": False}},
     )
     if result.modified_count:
-        print(f"🍃 marked {result.modified_count} previous '{document_type}' version(s) inactive")
+        print_step(f"🍃 marked {result.modified_count} previous '{document_type}' version(s) inactive")
 
 
 async def sync_document(manifest, parents, leaf_chunks):
@@ -50,7 +51,7 @@ async def sync_document(manifest, parents, leaf_chunks):
         await db["parents"].insert_many([dict(parent) for parent in parents])
     if leaf_chunks:
         await db["entities"].insert_many([dict(chunk) for chunk in leaf_chunks])
-    print(f"🍃 [{doc_id}] synced: manifest + {len(parents)} parent(s) + {len(leaf_chunks)} entity chunk(s)")
+    print_step(f"🍃 [{doc_id}] synced: manifest + {len(parents)} parent(s) + {len(leaf_chunks)} entity chunk(s)")
 
 
 async def get_parent(parent_chunk_id):

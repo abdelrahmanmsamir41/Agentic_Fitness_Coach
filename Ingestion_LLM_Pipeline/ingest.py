@@ -10,6 +10,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 sys.path.append(str(Path(__file__).resolve().parent.parent / "Ingestion_Pipeline"))  # after this folder, so local extract wins
 
+from console import print_step
 import enrich
 import extract
 import links
@@ -21,8 +22,8 @@ enrich.get_model = extract.get_model  # day assignment uses the same capped-thin
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = REPO_ROOT / "ingestion_llm_output"
 
-DOCUMENTS = [
-    (REPO_ROOT / "Splits" / "shady_splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer.pdf", "training_plan"),
+DOCUMENTS = [ 
+    (REPO_ROOT / "splits" / "W-1401-260906-0202 - Abdelrhman Mohamed Samer _260909_114328.pdf", "training_plan"),
 ]
 
 
@@ -30,7 +31,7 @@ async def parse_native_text(doc_id, pdf_path):
     # page_text for chunks = PDF's own text layer + links; no OCR
     text_by_page = native_text.extract_native_text(str(pdf_path))
     pages = [{"page_index": page_index, "markdown": text_by_page[page_index]} for page_index in sorted(text_by_page)]
-    print(f"📄 [{doc_id}] {len(pages)} pages read from the PDF text layer")
+    print_step(f"📄 [{doc_id}] {len(pages)} pages read from the PDF text layer")
     return links.merge_links_into_pages(pages, links.extract_links(str(pdf_path)))
 
 

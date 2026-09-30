@@ -7,6 +7,7 @@ import re
 
 import pymupdf as fitz
 
+from console import print_step
 from text_utils import NUMBER as _NUMBER
 
 _MIN_NATIVE_LEN = 200  # below this, too little to be a real content page
@@ -50,7 +51,7 @@ def prefer_native_when_ocr_diverges(pages, native_text_by_page):
             page["markdown"] = native_page_text
             swapped_pages.append(page["page_index"])
     if swapped_pages:
-        print(f"🔀 native text preferred over OCR for pages {swapped_pages} (OCR missed the content)")
+        print_step(f"🔀 native text preferred over OCR for pages {swapped_pages} (OCR missed the content)")
     return pages
 
 
@@ -88,5 +89,5 @@ def append_missing_native_numbers(pages, native_text_by_page):
             page["markdown"] += f"\n\n{native_page_text}"
             appended_pages.append(page["page_index"])
     if appended_pages:
-        print(f"➕ appended missing native numbers for pages {appended_pages}")
+        print_step(f"➕ appended missing native numbers for pages {appended_pages}")
     return pages

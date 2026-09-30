@@ -9,6 +9,7 @@ import pymupdf as fitz
 from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from console import print_step
 import links
 from extraction.extract import MODEL_NAME, match_batch_results
 from extraction.models import TrainingBatchResult
@@ -44,7 +45,7 @@ def _build_prompt(pdf_path, pages):
 async def _extract_pdf_part(pdf_path, pages):
     structured_model = get_model().with_structured_output(TrainingBatchResult)
     prompt = _build_prompt(pdf_path, pages)
-    print(f"💬 calling {MODEL_NAME} for pages {pages[0]['page_index']}-{pages[-1]['page_index']}...")
+    print_step(f"💬 calling {MODEL_NAME} for pages {pages[0]['page_index']}-{pages[-1]['page_index']}...")
     result = await structured_model.ainvoke([HumanMessage(content=[_build_pdf_block(pdf_path, pages), {"type": "text", "text": prompt}])])
     return match_batch_results({page["page_index"]: page["markdown"].strip() for page in pages}, result.pages)
 
@@ -55,7 +56,7 @@ async def extract_document(doc_id, document_type, pages, pdf_path):
         raise NotImplementedError(f"PDF extraction not implemented for {document_type!r}")
 
     page_parts = list(batched(pages, PDF_PAGES_PER_CALL))
-    print(f"🤖 [{doc_id}] sending {len(pages)} PDF pages to {MODEL_NAME} in {len(page_parts)} call(s)...")
+    print_step(f"🤖 [{doc_id}] sending {len(pages)} PDF pages to {MODEL_NAME} in {len(page_parts)} call(s)...")
     all_extractions = {}
     for extraction_by_page in await asyncio.gather(*(_extract_pdf_part(pdf_path, page_part) for page_part in page_parts)):
         all_extractions.update(extraction_by_page)

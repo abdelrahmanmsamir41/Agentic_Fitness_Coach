@@ -10,6 +10,8 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
+from console import print_step
+
 from . import preprocess
 
 load_dotenv()
@@ -49,11 +51,11 @@ async def _submit_job(client, pdf_path):
         "optionalPayload": json.dumps({"useDocOrientationClassify": False, "useDocUnwarping": False, "useChartRecognition": False}),
     }
     with open(pdf_path, "rb") as pdf_file:
-        print(f"🐌 Processing file: {pdf_path}")
+        print_step(f"🐌 Processing file: {pdf_path}")
         files = {"file": (Path(pdf_path).name, pdf_file, "application/pdf")}
         response = await _request(client, "POST", JOB_URL, headers=headers, data=form_data, files=files)
     job_id = response.json()["data"]["jobId"]
-    print(f"✅ OCR request submitted, job id: {job_id}")
+    print_step(f"✅ OCR request submitted, job id: {job_id}")
     return job_id
 
 
@@ -68,7 +70,7 @@ async def _poll_job(client, job_id):
         if elapsed > POLL_TIMEOUT_SECONDS:
             raise RuntimeError(f"PaddleOCR-VL job {job_id} stuck in '{state}' after {elapsed}s, giving up")
         if state == "done":
-            print(f"✅ job {job_id} done, extracted {job['extractProgress']['extractedPages']} pages ({elapsed}s)")
+            print_step(f"✅ job {job_id} done, extracted {job['extractProgress']['extractedPages']} pages ({elapsed}s)")
             return job["resultUrl"]["jsonUrl"]
         if state == "failed":
             raise RuntimeError(f"PaddleOCR-VL job failed: {job.get('errorMsg')}")
@@ -100,7 +102,7 @@ async def parse_pdf(pdf_path):
         for layout_result in line_result["layoutParsingResults"]:
             text = layout_result.get("markdown", {}).get("text", "")
             pages.append({"page_index": len(pages), "markdown": preprocess.strip_noise(text)})
-            print(f"📦 parsed page {len(pages)}")
+            print_step(f"📦 parsed page {len(pages)}")
     return pages
 
 

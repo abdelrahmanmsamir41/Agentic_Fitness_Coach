@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pymupdf as fitz
 
+from console import print_step
+
 _MIN_BBOX_RATIO = 0.50  # content bbox under this share of the page -> crop
 _SPARSE_BBOX_RATIO = 0.70  # under this AND sparse (see below) -> crop too
 _MAX_SPARSE_OCCUPANCY = 0.05  # ink pixels under this share -> bbox is mostly hollow
@@ -60,12 +62,12 @@ def cropped_copy(pdf_path):
     doc = fitz.open(pdf_path)
     cropped_pages = _crop_sparse_pages(doc)
     if not cropped_pages:
-        print("✂️ autocrop: no sparse pages found, using original PDF")
+        print_step("✂️ autocrop: no sparse pages found, using original PDF")
         doc.close()
         yield pdf_path
         return
 
-    print(f"✂️ autocrop: cropping {len(cropped_pages)} sparse page(s) {cropped_pages}")
+    print_step(f"✂️ autocrop: cropping {len(cropped_pages)} sparse page(s) {cropped_pages}")
     temp_path = tempfile.mktemp(suffix=".pdf")
     doc.save(temp_path)
     doc.close()

@@ -19,6 +19,7 @@ from qdrant_client.models import (
     PointIdsList, PointStruct, VectorParams,
 )
 
+from console import print_step
 from exercise_reference.embeddings import get_embedder as _get_embeddings  # one shared BGE-m3 instance
 from lazy import lazy
 
@@ -168,7 +169,7 @@ async def sync_document(doc_id, leaf_chunks):
 
     await _embed_and_upsert(client, COLLECTION_ALIAS, to_embed)
 
-    print(f"🔮 [{doc_id}] Qdrant sync: {len(to_embed)} embedded, "
+    print_step(f"🔮 [{doc_id}] Qdrant sync: {len(to_embed)} embedded, "
           f"{len(leaf_chunks) - len(to_embed)} unchanged skipped, {len(stale_ids)} stale removed")
 
 
