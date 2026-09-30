@@ -65,6 +65,8 @@ async def list_exercises(
     only_missing: bool = False,
     equipment: str | None = None,
     bodypart: str | None = None,
+    day: str | None = None,
+    position: int | None = None,
 ) -> list:
     """All plan exercises, optionally filtered, grouped by day.
 
@@ -74,11 +76,27 @@ async def list_exercises(
         below: Strictly below ("fewer than 10" -> 10).
         only_missing: Only where field is blank.
         equipment: e.g. "dumbbell".
-        bodypart: e.g. "chest".
+        bodypart: e.g. "chest". Only when the client asks for a muscle, not because a day's name mentions one.
+        day: Only this day number or target, e.g. "2", "legs". "Leg day", "chest day" etc. are days, not bodyparts.
+        position: Place in the day's plan order: 1 = first, 2 = second, -1 = last.
     """
     program = await plan_store.load_program(runtime.context.client_id)
-    hits = matching.filter_exercises(program, field, above, below, only_missing, equipment, bodypart)
+    matched_day = None
+    if day:
+        matched_day = matching.pick_day(program["days"], day)
+        if not matched_day:
+            return [{"error": f"no day matching {day!r}", "days": [program_day["target"] for program_day in program["days"]]}]
+        program = {**program, "days": [matched_day]}
+    hits = matching.filter_exercises(program, field, above, below, only_missing, equipment, bodypart, position)
+    if not hits and matched_day:
+        return [_why_no_match(matched_day)]
     return matching.make_readable(matching.group_by_day(hits))
+
+
+def _why_no_match(day):
+    """What the model needs to explain an empty result instead of just saying "none"."""
+    return {"day_number": day["day_number"], "target": day["target"], "rest_day": matching.is_rest_day(day),
+            "exercises_that_day": len(day["weight_exercises"]), "matches": 0}
 
 
 @tool(parse_docstring=True)
@@ -135,7 +153,7 @@ async def find_alternatives(exercise: str, runtime: Runtime, avoid_equipment: st
     )
 
 
-TOOLS = [
+TOOLS =[
          get_program_overview, 
          get_day,
          count_exercises,
@@ -145,7 +163,7 @@ TOOLS = [
          get_cardio, 
          search_coach_notes, 
          find_alternatives
-         ]
+        ]
 
 
 def _demo():

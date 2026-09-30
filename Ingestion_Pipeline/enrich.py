@@ -84,7 +84,8 @@ def resolve_exercise_reference(doc_id, all_extractions):
 
 
 def build_program_view(all_extractions):
-    """Day-by-day view: each split-table day gets the exercises/cardio of pages resolved to it.
+    """Day-by-day view: each split-table day gets the exercises/cardio of pages resolved to it,
+    in document order, each exercise stamped with its 1-based "order" within the day.
     Cardio not tied to a day goes in general_cardio instead of being copied onto every day.
     """
     day_entries = _split_table_day_entries(all_extractions)
@@ -93,7 +94,8 @@ def build_program_view(all_extractions):
     days_by_number = {day["day_number"]: day for day in days}
 
     general_cardio = []
-    for extraction in all_extractions.values():
+    for page_index in sorted(all_extractions):  # dict order follows the model's reply, not the PDF
+        extraction = all_extractions[page_index]
         day = days_by_number.get(extraction.get("day_number"))
         if day is not None:
             day["weight_exercises"].extend(extraction["weight_exercises"])
@@ -101,6 +103,9 @@ def build_program_view(all_extractions):
         elif extraction["cardio_entries"]:
             general_cardio.extend(extraction["cardio_entries"])
 
+    for day in days:  # copies: the extraction's own entities also feed the chunks
+        day["weight_exercises"] = [{**exercise, "order": order}
+                                   for order, exercise in enumerate(day["weight_exercises"], start=1)]
     return {"days": days, "general_cardio": general_cardio}
 
 
@@ -124,20 +129,25 @@ def _demo():
     assert _is_day_candidate(rest_marker) is True
     assert _is_day_candidate(table) is False  # the table itself is never a candidate for its own resolution
 
-    all_extractions = {
+    all_extractions = {  # keys out of page order, as a fresh model reply can leave them
+        4: {**other(), "category": "weight_exercise", "day_number": 1,
+            "weight_exercises": [{"exercise": "Row"}]},
         0: table,
         1: {**other(), "category": "weight_exercise", "day_number": 1,
-            "weight_exercises": [{"exercise": "Bench"}]},
+            "weight_exercises": [{"exercise": "Bench"}, {"exercise": "Fly"}]},
         2: {**other(), "category": "rest_day", "day_number": 2},
         3: {**other(), "category": "cardio", "day_number": None,
             "cardio_entries": [{"activity": "Treadmill"}]},
     }
     view = build_program_view(all_extractions)
     assert view["days"] == [
-        {"day_number": 1, "target": "chest", "weight_exercises": [{"exercise": "Bench"}], "cardio_entries": []},
+        {"day_number": 1, "target": "chest", "weight_exercises": [
+            {"exercise": "Bench", "order": 1}, {"exercise": "Fly", "order": 2}, {"exercise": "Row", "order": 3},
+        ], "cardio_entries": []},
         {"day_number": 2, "target": "rest", "weight_exercises": [], "cardio_entries": []},
     ]
     assert view["general_cardio"] == [{"activity": "Treadmill"}]
+    assert "order" not in all_extractions[1]["weight_exercises"][0], "order must not leak into the chunks' entities"
 
 
 if __name__ == "__main__":

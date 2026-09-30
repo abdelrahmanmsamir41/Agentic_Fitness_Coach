@@ -89,17 +89,27 @@ def _resolve_filter_values(query, key, known_values):
     return {known_values[index] for _, score, index in hits if score >= RESOLVE_CUTOFF}
 
 
-def filter_exercises(program, field=None, above=None, below=None, only_missing=False, equipment=None, bodypart=None):
+def _wanted_order(position, day_size):
+    """1-based position in the day, or counted from the end when negative (-1 = last)."""
+    return position if position > 0 else day_size + 1 + position
+
+
+def filter_exercises(program, field=None, above=None, below=None, only_missing=False, equipment=None, bodypart=None,
+                     position=None):
     """Every plan exercise tagged with its day; optionally only those whose field range reaches
-    above/below the bounds, or (only_missing=True) whose field is blank, and/or with that equipment/bodypart."""
+    above/below the bounds, or (only_missing=True) whose field is blank, and/or with that equipment/bodypart,
+    and/or at that position in its day's plan order (1 = first, -1 = last)."""
     exercises = _exercises_with_day(program)
     allowed_values_by_key = {
         key: _resolve_filter_values(term, key, sorted({exercise.get(key) for exercise in exercises} - {None}))
         for key, term in (("ref_equipment", equipment), ("ref_bodypart", bodypart)) if term
     }
+    day_sizes = {day["day_number"]: len(day["weight_exercises"]) for day in program["days"]}
     matches = []
     for exercise in exercises:
         if any(exercise.get(key) not in allowed for key, allowed in allowed_values_by_key.items()):
+            continue
+        if position and exercise.get("order") != _wanted_order(position, day_sizes[exercise["day_number"]]):
             continue
         field_value = exercise.get(field) if field else None
         if field and bool(field_value) == only_missing:
@@ -176,6 +186,14 @@ def _demo():
     assert make_readable(raw) == {"exercise": "A", "rest": "2 min", "ref_bodypart": "Chest"}
     assert make_readable([raw], include_video=True)[0]["video_url"] == "u"
     assert make_readable({"working_sets": {"low": 2.0, "high": None}}) == {"working_sets": "2"}, "range formatted before blanks dropped"
+    ordered = {"days": [
+        {"day_number": 1, "target": "x", "weight_exercises": [{"exercise": "A", "order": 1}, {"exercise": "B", "order": 2}]},
+        {"day_number": 2, "target": "y", "weight_exercises": [{"exercise": "C", "order": 1}]},
+    ]}
+    assert [exercise["exercise"] for exercise in filter_exercises(ordered, position=1)] == ["A", "C"]
+    assert [exercise["exercise"] for exercise in filter_exercises(ordered, position=2)] == ["B"]
+    assert [exercise["exercise"] for exercise in filter_exercises(ordered, position=-1)] == ["B", "C"]
+    assert filter_exercises(ordered, position=5) == []
     grouped = group_by_day([{"day_number": 1, "day_target": "x", "exercise": "A"}, {"day_number": 1, "day_target": "x", "exercise": "B"}])
     assert grouped == [{"day_number": 1, "target": "x", "exercises": [{"exercise": "A"}, {"exercise": "B"}]}]
     rests = {"days": [{"day_number": 1, "target": "x", "weight_exercises": [{"rest": "2-3 min"}, {"rest": "2-3 min"}, {"rest": "90 s"}]}]}
