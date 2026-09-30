@@ -1,8 +1,4 @@
-"""Parse raw HTML <table> markup (as PaddleOCR-VL emits it) into a compact,
-LLM-friendly text block instead of passing hundreds of <table>/<tr>/<td> tags
-straight through. Uses BeautifulSoup (already a transitive dependency) since
-a hand-rolled parser would need to deal with colspan/rowspan and ragged rows
-anyway -- no reason to redo what a real HTML parser already handles.
+"""Render raw HTML <table> markup (as PaddleOCR-VL emits it) as a compact, LLM-friendly text block.
 """
 from __future__ import annotations
 

@@ -1,8 +1,6 @@
-"""Gazetteer keyword rules: near-certain precision whenever an exercise name
-spells out its own equipment/bodypart/type ("Cable lat pullover" -> Cable,
-Lats), checked with word-boundary regex so e.g. "Cable" never fires a bare
-"ab" bodypart rule. These always win over whatever matching.py's similarity
-match would have said for the same field -- see exercise_reference/__init__.py.
+"""Keyword rules for exercise names that spell out their own equipment/bodypart/type
+("Cable lat pullover" -> Cable, Lats). Word-boundary matched, and they override matching.py's
+similarity match for the same field.
 """
 from text_utils import compile_word_boundary_pattern
 
@@ -96,7 +94,7 @@ def _demo():
     assert rule_based_fields("Cable crossover") == {"ref_equipment": "Cable"}
     assert rule_based_fields("Bodyweight squat") == {"ref_equipment": "Body Only"}
     assert rule_based_fields("Nordic hamstring curl") == {"ref_bodypart": "Hamstrings"}
-    # coach shorthand: "DB shoulder press" was tagged Bands by the similarity fallback before this
+    # coach shorthand
     assert rule_based_fields("DB shoulder press") == {"ref_equipment": "Dumbbell", "ref_bodypart": "Shoulders"}
     assert rule_based_fields("Decline fly machine")["ref_bodypart"] == "Chest"
     assert rule_based_fields("Rear delt fly machine")["ref_bodypart"] == "Shoulders"

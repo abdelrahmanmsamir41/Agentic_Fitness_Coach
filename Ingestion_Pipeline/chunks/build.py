@@ -1,5 +1,4 @@
-"""Build the parent/leaf chunk records described in the ingestion plan,
-for one page (build_chunks) or a whole document's pages (build_all).
+"""Parent/leaf chunk records for one page (build_chunks) or a whole document (build_all).
 """
 from .leaves import build_leaves, slugify
 
@@ -22,8 +21,7 @@ def build_chunks(doc_id, document_type, page, extraction, position):
 
 
 def build_all(doc_id, document_type, shared_fields, pages, all_extractions):
-    """Builds parent/leaf records for every page, applying the fields
-    shared across the whole document (coach_id, effective_date, etc.)."""
+    """Parent/leaf records for every page, with the document-wide shared_fields applied."""
     all_parents, all_leaves = [], []
     for position, page in enumerate(pages):
         extraction = all_extractions[page["page_index"]]

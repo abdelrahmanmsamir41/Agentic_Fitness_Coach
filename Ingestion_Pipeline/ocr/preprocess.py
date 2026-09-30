@@ -1,7 +1,4 @@
-"""Strip low-value noise from parsed markdown before it reaches the LLM, to
-cut token usage. Adapted from an earlier, more general OCR-cleanup pass --
-only the parts relevant here (image tags, verbose HTML table styling); that
-pass's currency/duration normalization doesn't apply to fitness plans.
+"""Strip low-value noise from parsed markdown before it reaches the LLM, to cut token usage.
 """
 import html
 import re
@@ -18,7 +15,7 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 # layer has different ambiguity risk. Only terms confirmed low-collision for
 # workout-plan text are here; terms like SS/BP/DL/PR/TM/RP/ISO/MV/AF collide
 # with common words or other fitness programs/brands and are deliberately
-# left unexpanded -- see feedback_general_preprocessing memory.
+# left unexpanded.
 _EXERCISE_TERMS = {
     "DB": "Dumbbell",
     "KB": "Kettlebell",
@@ -80,8 +77,7 @@ def _expand_terms(text):
 
 
 def strip_noise(text):
-    # Tables first: parse -> normalize -> compact-render, instead of passing
-    # raw <table><tr><td> HTML straight to the LLM (see ingestion/tables.py).
+    # tables first, while their HTML is still intact
     text = tables.render_tables(text, normalize=_expand_terms)
     text = _IMAGE.sub("", text)
     text = _STYLE_BORDER_ATTR.sub("", text)

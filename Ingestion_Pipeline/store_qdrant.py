@@ -1,18 +1,9 @@
 """Qdrant storage for leaf chunks.
 
-sync_document() is the routine path: per document, chunks are content-hashed
-so unchanged ones are never re-embedded or re-upserted, changed/new ones are,
-and chunks no longer produced for that document are deleted by point id --
-every other document's points are untouched.
-
-reindex() is a separate, rare-use tool for a full-corpus rebuild (e.g.
-switching embedding models): it builds into a fresh, uniquely named
-collection and only atomically flips COLLECTION_ALIAS onto it once the build
-is verified by an exact point count -- search() always reads through the
-alias, so it never sees a missing or half-built collection during a rebuild,
-and a bad build is discarded without ever touching what's live. The previous
-generation is kept as an instant manual rollback; only generations older
-than that get cleaned up.
+sync_document(): routine per-document sync; content hashes skip re-embedding unchanged chunks.
+reindex(): rare full rebuild into a fresh collection; COLLECTION_ALIAS flips to it only after an
+exact point-count check, so search() never sees a half-built collection. The previous generation
+is kept for manual rollback.
 """
 import asyncio
 import hashlib
@@ -80,8 +71,7 @@ async def _embed_and_upsert(client, collection_name, leaf_chunks):
     if not leaf_chunks:
         return
     texts = [chunk["embed_text"] for chunk in leaf_chunks]
-    # sentence-transformers embedding is a blocking CPU/GPU call, no native
-    # async form -- run it off the event loop instead of blocking it.
+    # embedding is blocking CPU/GPU work
     vectors = await asyncio.to_thread(_get_embeddings().embed_documents, texts)
     points = [PointStruct(id=_to_point_id(chunk["chunk_id"]), vector=vector, payload=chunk)
               for chunk, vector in zip(leaf_chunks, vectors)]

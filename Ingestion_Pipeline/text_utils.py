@@ -1,9 +1,4 @@
-"""Small shared regex helpers -- previously each hand-written independently
-in more than one module (a duplicated NUMBER pattern in extraction/extract.py
-and ocr/native_text.py; a duplicated word-boundary-alternation builder in
-ocr/preprocess.py, reimplemented per-keyword instead of precompiled in
-exercise_reference/rules.py).
-"""
+"""Small shared regex helpers."""
 import re
 
 # digit run, allowing "1,234"/"3.5" as one token without swallowing trailing punctuation

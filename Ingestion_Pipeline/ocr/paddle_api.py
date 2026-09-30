@@ -1,9 +1,5 @@
 """PaddleOCR-VL cloud job API: submit a PDF, poll, and return per-page markdown.
-
-Refactored from the working ad-hoc script in test-paddle-ocr.ipynb (kept only
-for experimentation now). Image references in the returned markdown point at
-the API's remote image URLs directly -- we don't download the bytes for MVP,
-text is what gets embedded/queried.
+Image references stay as the API's remote URLs; only text is embedded.
 """
 import asyncio
 import json

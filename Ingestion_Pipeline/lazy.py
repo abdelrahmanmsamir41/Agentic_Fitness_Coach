@@ -1,7 +1,4 @@
-"""Lazy-singleton helper -- the same "construct an expensive client/model
-once, on first use" shape was hand-written independently in several modules
-(store_qdrant.py, extraction/extract.py, exercise_reference/embeddings.py).
-"""
+"""Lazy-singleton helper: build an expensive client/model once, on first use."""
 
 
 def lazy(factory):

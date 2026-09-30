@@ -1,10 +1,5 @@
-"""Post-extraction enrichment passes over one document's all_extractions --
-kept separate from extraction/extract.py, whose only job is turning one
-page's raw text into structured data. These are three different concerns:
-day-number resolution is a second, independent Gemini call over page topics;
-exercise-reference matching is local entity-linking with no LLM in it at all;
-build_program_view is a pure reshape of already-enriched data into a
-day-by-day view. Called from ingest.py, after extract_document() returns.
+"""Post-extraction enrichment over one document's extractions: day-number resolution (one Gemini
+call over page topics), exercise-reference matching (local, no LLM), and the day-by-day program view.
 """
 import exercise_reference
 from extraction import prompts
@@ -13,16 +8,9 @@ from extraction.models import DayAssignmentResult
 
 
 async def assign_day_numbers(day_entries, page_topics):
-    """day_entries: iterable of (day_number, target), from the split-table page's
-    program_days. page_topics: iterable of (page_index, page_topic), for every
-    page that might belong to one specific day (see _is_day_candidate).
-    Returns {page_index: day_number}, omitting pages the model couldn't place
-    in any listed day.
-
-    One classification call over page_topics only (not full page text) -- cheap,
-    and independent of the extraction batching, so it doesn't need the split-table
-    page's batch to run before any other page's batch.
-    """
+    """day_entries: (day_number, target) pairs from the split table. page_topics: (page_index, page_topic)
+    pairs for pages that may belong to one day. Returns {page_index: day_number}, omitting pages the
+    model couldn't place. Only page topics are sent, not page text, to keep the call cheap."""
     day_entries, page_topics = list(day_entries), list(page_topics)
     if not day_entries or not page_topics:
         return {}
@@ -38,19 +26,13 @@ async def assign_day_numbers(day_entries, page_topics):
 
 
 def _is_split_table(extraction):
-    """The real weekly split table -- "rest_day" is a separate category now
-    (a standalone single-day marker)"""
+    """The plan's multi-day split table."""
     return extraction["category"] == "program_structure"
 
 
 def _is_day_candidate(extraction):
-    """Any page whose own page_topic might name one specific day: exercise/cardio
-    pages (need day_number for filtering), "other" pages (duplicate "X Training
-    Log" pages with no structured entities of their own), and "rest_day" pages --
-    resolved through the exact same matching-against-the-split-table pipeline as
-    everything else here, not a separate mechanism. Pages that clearly don't
-    belong to any day get null back from assign_day_numbers rather than a guess,
-    so over-including candidates here is safe."""
+    """Pages whose topic might name one specific day. Over-including is safe: assign_day_numbers
+    returns null for pages that don't belong to any day."""
     return extraction["category"] in ("weight_exercise", "cardio", "other", "rest_day")
 
 
@@ -80,12 +62,8 @@ async def resolve_day_numbers(doc_id, all_extractions):
 
 
 def resolve_exercise_reference(doc_id, all_extractions):
-    """Stamps ref_type/ref_bodypart/ref_equipment/ref_level/ref_match_score onto
-    every weight_exercise entity, matched against the static megaGymDataset
-    reference set (exercise_reference/ package) -- no LLM involved, purely local.
-    Collected by list contents, not by category=="weight_exercise" -- a page's
-    dominant category no longer gates which lists it can populate, so an
-    exercise named on e.g. an "advice" page still needs matching."""
+    """Stamps ref_* fields onto every weight_exercise entity on any page, matched against the
+    exercise reference set (local, no LLM)."""
     exercises = [
         entity
         for extraction in all_extractions.values()
@@ -105,13 +83,8 @@ def resolve_exercise_reference(doc_id, all_extractions):
 
 
 def build_program_view(all_extractions):
-    """Pure reshape (no LLM, nothing mutated) of the already-enriched
-    all_extractions into a day-by-day view: each split-table day gets the
-    weight_exercises/cardio_entries pulled from every page whose resolved
-    day_number matches it -- a rest day naturally ends up with empty lists,
-    its target already says "rest". Cardio with no resolved day_number (a
-    generic "Cardio" page not tied to one day) goes in general_cardio instead
-    of being duplicated onto every training day or attached to a rest day.
+    """Day-by-day view: each split-table day gets the exercises/cardio of pages resolved to it.
+    Cardio not tied to a day goes in general_cardio instead of being copied onto every day.
     """
     day_entries = _split_table_day_entries(all_extractions)
     days = [{"day_number": day_number, "target": target, "weight_exercises": [], "cardio_entries": []}
@@ -131,8 +104,7 @@ def build_program_view(all_extractions):
 
 
 async def enrich_document(doc_id, all_extractions):
-    """Runs both LLM/local enrichment passes over one document's extractions,
-    in place."""
+    """Runs both enrichment passes over one document's extractions, in place."""
     await resolve_day_numbers(doc_id, all_extractions)
     resolve_exercise_reference(doc_id, all_extractions)
 

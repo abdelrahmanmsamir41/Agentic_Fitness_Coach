@@ -1,7 +1,4 @@
-"""Loads the static exercise reference set and its BGE-m3 embeddings -- the
-reference titles are embedded once ever (cached to data/exercises_embeddings.npy)
-since the reference set is static; re-running the model over it on every
-ingestion run would be pure waste.
+"""Static exercise reference set and its BGE-m3 embeddings, cached to data/exercises_embeddings.npy.
 """
 import json
 import os

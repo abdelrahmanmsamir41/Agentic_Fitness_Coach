@@ -1,9 +1,5 @@
-"""Resolves each extracted exercise name to a reference row: rules.py's
-keyword rules first (near-certain precision when they fire), then a
-BGE-m3-cosine top-K funnel re-ranked by RapidFuzz string score for whatever
-the rules didn't cover -- short, often near-identical exercise names is
-exactly the case where lexical overlap adds real precision on top of pure
-semantic similarity.
+"""Resolves exercise names to reference rows: rules.py first, then BGE-m3 cosine top-K
+re-ranked by RapidFuzz, since short, near-identical names are where lexical overlap helps most.
 """
 import numpy as np
 from rapidfuzz import fuzz
@@ -24,9 +20,7 @@ def _find_similarity_match(query, query_vector, ref_vectors, reference):
     query_lower = query.lower()
     best_index, best_score = None, -1.0
     for index in top_indexes:
-        # token_sort_ratio doesn't lowercase on its own -- "leg" vs "Leg" would
-        # otherwise mismatch at nearly every character and tank a genuinely
-        # correct match's fuzzy component for no real reason.
+        # token_sort_ratio is case-sensitive
         fuzzy_score = fuzz.token_sort_ratio(query_lower, reference[index]["title"].lower()) / 100
         combined_score = (1 - FUZZY_WEIGHT) * float(scores[index]) + FUZZY_WEIGHT * fuzzy_score
         if combined_score > best_score:
@@ -100,12 +94,7 @@ def _demo():
     no_match = _resolve_exercise("Completely unrelated made-up thing", far_vector, ref_vectors, reference)
     assert no_match is None
 
-    # case must not affect the fuzzy tiebreak -- tied cosine (identical vector),
-    # so only the fuzzy term decides. Title-case "Seated Leg Curl" against
-    # query "Seated leg curl" scores 40/100 case-sensitively (worse than the
-    # wrong "Seated finger curl", 79/100) but 100/100 once both are lowercased
-    # -- this exact pairing is what shipped the real bug, a synthetic
-    # all-same-case example doesn't reproduce it.
+    # tied cosine, so only the fuzzy term decides; this real pairing lost to the wrong title case-sensitively
     tied_vector = _to_unit_vector(np.array([1.0, 1.0], dtype=np.float32))
     case_reference = [
         {"title": "Seated Leg Curl", "type": "Strength", "bodypart": "Hamstrings", "equipment": "Machine", "level": "Beginner"},

@@ -19,13 +19,7 @@ class NutritionSectionResult(BaseModel):
     entities: List[NutritionEntity] = Field(description="Meal entries extracted from the page")
 
 
-# --- Training-plan section categories -------------------------------------
-# A training plan mixes several distinct kinds of content on different pages
-# (exercise tables, a day/split overview, a glossary of coaching terms,general advice, cardio, marketing)
-# -- one generic "exercise" schema for the whole document either force-fits everything into exercise fields
-# (cardio, glossary) or throws it all into an untyped fallback text blob. Classifying each section and extracting
-# into the matching typed list keeps embeddings specific (e.g. a glossary leaf is just "RIR: how many reps...",
-# not buried in a whole-section paragraph) instead of generic.
+# One typed list per content kind keeps each leaf's embedding specific instead of one generic schema.
 
 SectionCategory = Literal[
     "weight_exercise", "cardio", "glossary", "advice", "program_structure", "rest_day", "marketing", "other"

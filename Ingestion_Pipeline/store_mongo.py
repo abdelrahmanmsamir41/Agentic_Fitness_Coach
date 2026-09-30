@@ -22,10 +22,7 @@ load_dotenv()
 MONGODB_URL = os.environ.get("MONGODB_URL", "mongodb://localhost:27017/")
 DB_NAME = "choose_your_trainer"
 
-# pymongo's own native async driver, not motor -- motor is now in its
-# deprecation window (deprecated May 2026) and MongoDB itself recommends
-# this as the direct replacement: same API, better latency/throughput
-# since it runs on asyncio directly instead of motor's thread-pool shim.
+# pymongo's native async client; motor is deprecated
 _get_client = lazy(lambda: AsyncMongoClient(MONGODB_URL))
 
 

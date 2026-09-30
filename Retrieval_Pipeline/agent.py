@@ -87,7 +87,7 @@ async def ask(agent, question, client_id, thread_id):
 
 async def stream_answer(agent, question, client_id, thread_id):
     """Yields the answer's text as the model produces it; tool calls and tool results are skipped."""
-    text_by_message_id, last_chunk_by_message_id = {}, {}  # message id -> text yielded so far / last chunk yielded
+    text_by_message_id, last_chunk_by_message_id = {}, {}
     async for chunk, metadata in agent.astream(
         {"messages": [{"role": "user", "content": question}]},
         config={"configurable": {"thread_id": thread_id}},

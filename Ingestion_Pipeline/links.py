@@ -22,9 +22,7 @@ def extract_links(pdf_path):
         page_links = [link for link in page.get_links() if link.get("uri")]
         if not page_links:
             continue
-        # get_links() follows the PDF's /Annots order, not necessarily reading
-        # order -- sort top-to-bottom/left-to-right so link order matches the
-        # rows/paragraphs a reader (or the LLM) would associate them with.
+        # get_links() follows /Annots order, not reading order
         page_links.sort(key=lambda link: (round(link["from"].y0), link["from"].x0))
         entries = []
         for link in page_links:
