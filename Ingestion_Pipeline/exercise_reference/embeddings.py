@@ -17,9 +17,6 @@ EMBEDDINGS_CACHE = os.path.join(DATA_DIR, "exercises_embeddings.npy")
 
 EMBEDDING_MODEL = "BAAI/bge-m3"  # same as store_qdrant.py -- keep both in sync if this ever changes
 
-_reference_embeddings = None
-
-
 def _load_embedder():
     print(f"🧠 loading {EMBEDDING_MODEL}...")
     return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
@@ -41,23 +38,21 @@ def _load_reference():
 get_reference = lazy(_load_reference)
 
 
-def get_reference_embeddings():
-    global _reference_embeddings
-    if _reference_embeddings is not None:
-        return _reference_embeddings
-
+def _load_reference_embeddings():
     if os.path.exists(EMBEDDINGS_CACHE):
-        _reference_embeddings = np.load(EMBEDDINGS_CACHE)
-        print(f"🧠 loaded {len(_reference_embeddings)} cached reference embeddings from {EMBEDDINGS_CACHE}")
-        return _reference_embeddings
+        vectors = np.load(EMBEDDINGS_CACHE)
+        print(f"🧠 loaded {len(vectors)} cached reference embeddings from {EMBEDDINGS_CACHE}")
+        return vectors
 
-    titles = [r["title"] for r in get_reference()]
+    titles = [row["title"] for row in get_reference()]
     print(f"🧠 embedding {len(titles)} reference exercises (one-time, cached afterward)...")
     vectors = normalize(np.array(get_embedder().embed_documents(titles), dtype=np.float32))
     np.save(EMBEDDINGS_CACHE, vectors)
-    _reference_embeddings = vectors
     print(f"🧠 reference embeddings cached to {EMBEDDINGS_CACHE}")
-    return _reference_embeddings
+    return vectors
+
+
+get_reference_embeddings = lazy(_load_reference_embeddings)
 
 
 def embed_queries(names):
