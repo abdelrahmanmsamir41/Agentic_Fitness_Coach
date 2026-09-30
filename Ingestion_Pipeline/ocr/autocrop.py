@@ -35,12 +35,8 @@ def _should_crop(bbox_ratio, occupancy_ratio):
     return bbox_ratio < _SPARSE_BBOX_RATIO and occupancy_ratio < _MAX_SPARSE_OCCUPANCY
 
 
-@contextlib.contextmanager
-def cropped_copy(pdf_path):
-    """Yields a path to submit for OCR -- the original path unchanged if no
-    page needed cropping, otherwise a temp copy with the sparse pages'
-    cropbox tightened to their real (rendered) content."""
-    doc = fitz.open(pdf_path)
+def _crop_sparse_pages(doc):
+    """Tightens each sparse page's cropbox to its rendered content; returns the cropped page numbers."""
     cropped_pages = []
     for page in doc:
         metrics = _measure_content(page)
@@ -55,7 +51,14 @@ def cropped_copy(pdf_path):
         # unrelated offset as a side effect (confirmed against a real PDF).
         page.set_cropbox(padded_bbox)
         cropped_pages.append(page.number)
+    return cropped_pages
 
+
+@contextlib.contextmanager
+def cropped_copy(pdf_path):
+    """Yields a path to submit for OCR: the original if no page needed cropping, else a cropped temp copy."""
+    doc = fitz.open(pdf_path)
+    cropped_pages = _crop_sparse_pages(doc)
     if not cropped_pages:
         print("✂️ autocrop: no sparse pages found, using original PDF")
         doc.close()

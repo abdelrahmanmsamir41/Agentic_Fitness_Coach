@@ -79,17 +79,32 @@ async def _embed_and_upsert(client, collection_name, leaf_chunks):
         await client.upsert(collection_name=collection_name, points=list(batch))
 
 
-async def reindex(leaf_chunks):
-    client = _get_client()
-    new_name = f"{COLLECTION_PREFIX}{uuid.uuid4().hex}"
-
+async def _create_collection(client):
+    """A new, empty physical collection with the payload indexes; returns its name."""
+    name = f"{COLLECTION_PREFIX}{uuid.uuid4().hex}"
     await client.create_collection(
-        collection_name=new_name,
+        collection_name=name,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
     )
     for field, schema in FILTER_FIELDS.items():
-        await client.create_payload_index(new_name, field_name=field, field_schema=schema)
+        await client.create_payload_index(name, field_name=field, field_schema=schema)
+    return name
 
+
+async def _swap_alias(client, new_name):
+    """Points COLLECTION_ALIAS at new_name in one atomic update; returns the previous target."""
+    await _migrate_legacy_collection(client, await client.get_collections())
+    previous_name = await _get_alias_target(client)
+    operations = [CreateAliasOperation(create_alias=CreateAlias(collection_name=new_name, alias_name=COLLECTION_ALIAS))]
+    if previous_name:
+        operations.insert(0, DeleteAliasOperation(delete_alias=DeleteAlias(alias_name=COLLECTION_ALIAS)))
+    await client.update_collection_aliases(change_aliases_operations=operations)
+    return previous_name
+
+
+async def reindex(leaf_chunks):
+    client = _get_client()
+    new_name = await _create_collection(client)
     await _embed_and_upsert(client, new_name, leaf_chunks)
 
     count = (await client.count(new_name, exact=True)).count
@@ -100,13 +115,7 @@ async def reindex(leaf_chunks):
             f"in {new_name} -- new collection discarded, live alias untouched"
         )
 
-    await _migrate_legacy_collection(client, await client.get_collections())
-    previous_name = await _get_alias_target(client)
-    operations = [CreateAliasOperation(create_alias=CreateAlias(collection_name=new_name, alias_name=COLLECTION_ALIAS))]
-    if previous_name:
-        operations.insert(0, DeleteAliasOperation(delete_alias=DeleteAlias(alias_name=COLLECTION_ALIAS)))
-    await client.update_collection_aliases(change_aliases_operations=operations)
-
+    previous_name = await _swap_alias(client, new_name)
     await _cleanup_old_generations(client, keep_names={new_name, previous_name})
 
 
@@ -117,20 +126,24 @@ async def ensure_collection():
     await _migrate_legacy_collection(client, await client.get_collections())
     if await _get_alias_target(client) is not None:
         return
-    name = f"{COLLECTION_PREFIX}{uuid.uuid4().hex}"
-    await client.create_collection(
-        collection_name=name,
-        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
-    )
-    for field, schema in FILTER_FIELDS.items():
-        await client.create_payload_index(name, field_name=field, field_schema=schema)
-    await client.update_collection_aliases(change_aliases_operations=[
-        CreateAliasOperation(create_alias=CreateAlias(collection_name=name, alias_name=COLLECTION_ALIAS))
-    ])
+    await _swap_alias(client, await _create_collection(client))
 
 
 def _hash_content(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _diff_chunks(leaf_chunks, existing_points):
+    """Stamps content_hash on each chunk. Returns (chunks to (re-)embed, point ids no longer produced)."""
+    existing_hash_by_chunk_id = {point.payload["chunk_id"]: point.payload.get("content_hash") for point in existing_points}
+    to_embed, keep_point_ids = [], set()
+    for chunk in leaf_chunks:
+        chunk["content_hash"] = _hash_content(chunk["embed_text"])
+        keep_point_ids.add(_to_point_id(chunk["chunk_id"]))
+        if existing_hash_by_chunk_id.get(chunk["chunk_id"]) != chunk["content_hash"]:
+            to_embed.append(chunk)
+    stale_ids = {point.id for point in existing_points} - keep_point_ids
+    return to_embed, stale_ids
 
 
 async def sync_document(doc_id, leaf_chunks):
@@ -149,17 +162,7 @@ async def sync_document(doc_id, leaf_chunks):
         with_vectors=False,
         limit=10_000,
     )
-    existing_hash_by_chunk_id = {point.payload["chunk_id"]: point.payload.get("content_hash") for point in existing}
-    existing_point_ids = {point.id for point in existing}
-
-    to_embed, keep_point_ids = [], set()
-    for chunk in leaf_chunks:
-        chunk["content_hash"] = _hash_content(chunk["embed_text"])
-        keep_point_ids.add(_to_point_id(chunk["chunk_id"]))
-        if existing_hash_by_chunk_id.get(chunk["chunk_id"]) != chunk["content_hash"]:
-            to_embed.append(chunk)
-
-    stale_ids = existing_point_ids - keep_point_ids
+    to_embed, stale_ids = _diff_chunks(leaf_chunks, existing)
     if stale_ids:
         await client.delete(collection_name=COLLECTION_ALIAS, points_selector=PointIdsList(points=list(stale_ids)))
 
@@ -188,3 +191,22 @@ async def search(query_text, top_k=5, filters=None):
 
 def _to_point_id(chunk_id):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+
+
+def _demo():
+    from types import SimpleNamespace as Point
+    unchanged = {"chunk_id": "d:0", "embed_text": "same"}
+    changed = {"chunk_id": "d:1", "embed_text": "new text"}
+    existing = [
+        Point(id=_to_point_id("d:0"), payload={"chunk_id": "d:0", "content_hash": _hash_content("same")}),
+        Point(id=_to_point_id("d:1"), payload={"chunk_id": "d:1", "content_hash": _hash_content("old text")}),
+        Point(id=_to_point_id("d:9"), payload={"chunk_id": "d:9", "content_hash": "x"}),
+    ]
+    to_embed, stale_ids = _diff_chunks([unchanged, changed], existing)
+    assert to_embed == [changed], "only the changed chunk is re-embedded"
+    assert stale_ids == {_to_point_id("d:9")}, "only the chunk no longer produced is stale"
+
+
+if __name__ == "__main__":
+    _demo()
+    print("ok")

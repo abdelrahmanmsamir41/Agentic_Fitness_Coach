@@ -29,39 +29,47 @@ def _write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-async def ingest_document(pdf_path, document_type, coach_id, client_id, *, parse, extract, output_dir):
-    doc_id = _make_doc_id(pdf_path)
-    doc_out_dir = output_dir / doc_id
-    doc_out_dir.mkdir(parents=True, exist_ok=True)
+async def _load_or_parse(doc_id, pdf_path, parse, doc_out_dir):
     pages_cache = doc_out_dir / "pages.json"
-
     if pages_cache.exists():
         print(f"💾 [{doc_id}] reusing cached parse from {pages_cache}")
-        pages = json.loads(pages_cache.read_text(encoding="utf-8"))
-    else:
-        pages = await parse(doc_id, pdf_path)
-        _write_json(pages_cache, pages)
+        return json.loads(pages_cache.read_text(encoding="utf-8"))
+    pages = await parse(doc_id, pdf_path)
+    _write_json(pages_cache, pages)
+    return pages
 
-    (doc_out_dir / "merged.md").write_text("\n\n".join(page["markdown"] for page in pages), encoding="utf-8")
 
-    effective_date = datetime.date.today().isoformat()
-    manifest = {
+async def _load_or_extract(doc_id, document_type, pages, pdf_path, extract, doc_out_dir):
+    """Extracts and enriches every page, or reuses the cached result."""
+    extractions_path = doc_out_dir / "extractions.json"
+    if extractions_path.exists():
+        print(f"💾 [{doc_id}] reusing cached extraction from {extractions_path}")
+        cached = json.loads(extractions_path.read_text(encoding="utf-8"))
+        return {int(page_index): extraction for page_index, extraction in cached.items()}
+    all_extractions = await extract(doc_id, document_type, pages, str(pdf_path))
+    await enrich_document(doc_id, all_extractions)
+    _write_json(extractions_path, {str(page_index): all_extractions[page_index] for page_index in sorted(all_extractions)})
+    print(f"📦 [{doc_id}] LLM extraction output written to {extractions_path}")
+    return all_extractions
+
+
+def _build_manifest(doc_id, pdf_path, document_type, coach_id, client_id, page_count, effective_date):
+    return {
         "document_id": doc_id,
         "document_type": document_type,
         "source_pdf": str(pdf_path),
         "coach_id": coach_id,
         "client_id": client_id,
-        "page_count": len(pages),
+        "page_count": page_count,
         "ingested_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "effective_date": effective_date,
         "active": True,
     }
-    _write_json(doc_out_dir / "manifest.json", manifest)
-    print(f"📝 [{doc_id}] {len(pages)} pages parsed, manifest written to {doc_out_dir}")
 
-    await store_mongo.mark_previous_versions_inactive(client_id, document_type)
 
-    shared_fields = {
+def _build_shared_fields(pdf_path, coach_id, client_id, effective_date):
+    """Fields stamped onto every parent/leaf chunk of the document."""
+    return {
         "coach_id": coach_id,
         "client_id": client_id,
         "active": True,
@@ -71,22 +79,27 @@ async def ingest_document(pdf_path, document_type, coach_id, client_id, *, parse
         "source_pdf": pdf_path.name,
     }
 
-    extractions_path = doc_out_dir / "extractions.json"
-    if extractions_path.exists():
-        print(f"💾 [{doc_id}] reusing cached extraction from {extractions_path}")
-        cached = json.loads(extractions_path.read_text(encoding="utf-8"))
-        all_extractions = {int(page_index): extraction for page_index, extraction in cached.items()}
-    else:
-        all_extractions = await extract(doc_id, document_type, pages, str(pdf_path))
-        await enrich_document(doc_id, all_extractions)
-        _write_json(extractions_path, {str(page_index): all_extractions[page_index] for page_index in sorted(all_extractions)})
-        print(f"📦 [{doc_id}] LLM extraction output written to {extractions_path}")
 
+async def ingest_document(pdf_path, document_type, coach_id, client_id, *, parse, extract, output_dir):
+    doc_id = _make_doc_id(pdf_path)
+    doc_out_dir = output_dir / doc_id
+    doc_out_dir.mkdir(parents=True, exist_ok=True)
+    effective_date = datetime.date.today().isoformat()
+
+    pages = await _load_or_parse(doc_id, pdf_path, parse, doc_out_dir)
+    (doc_out_dir / "merged.md").write_text("\n\n".join(page["markdown"] for page in pages), encoding="utf-8")
+    manifest = _build_manifest(doc_id, pdf_path, document_type, coach_id, client_id, len(pages), effective_date)
+    _write_json(doc_out_dir / "manifest.json", manifest)
+    print(f"📝 [{doc_id}] {len(pages)} pages parsed, manifest written to {doc_out_dir}")
+
+    await store_mongo.mark_previous_versions_inactive(client_id, document_type)
+
+    all_extractions = await _load_or_extract(doc_id, document_type, pages, pdf_path, extract, doc_out_dir)
     program_view = build_program_view(all_extractions)
     _write_json(doc_out_dir / "program.json", program_view)
 
+    shared_fields = _build_shared_fields(pdf_path, coach_id, client_id, effective_date)
     all_parents, all_leaves = chunks.build_all(doc_id, document_type, shared_fields, pages, all_extractions)
-
     await asyncio.gather(
         store_mongo.sync_document({**manifest, "program": program_view}, all_parents, all_leaves),
         store_qdrant.sync_document(doc_id, all_leaves),
