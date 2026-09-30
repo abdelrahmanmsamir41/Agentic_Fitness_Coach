@@ -8,6 +8,7 @@ from rapidfuzz import fuzz, process, utils
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "Ingestion_Pipeline"))
 from exercise_reference.rules import rule_based_fields  # noqa: E402
+from text_utils import format_range  # noqa: E402
 
 MATCH_CUTOFF = 60
 MAX_EXERCISE_HITS = 3
@@ -38,103 +39,105 @@ def attach_general_cardio(program):
     return {**program, "days": days}
 
 
-def _fuzzy(query, choices, **kwargs):
+def _fuzzy_match(query, choices, **kwargs):
     return process.extract(query, choices, scorer=fuzz.WRatio, processor=utils.default_process,
                            score_cutoff=MATCH_CUTOFF, **kwargs)
 
 
-def pick_day(days, day):
-    """day: a day number ("2") or a target ("legs"). Returns the day dict or None."""
-    if day.strip().isdigit():
-        return next((d for d in days if d["day_number"] == int(day)), None)
-    hits = _fuzzy(day, [d["target"] for d in days], limit=1)
+def pick_day(days, query):
+    """query: a day number ("2") or a target ("legs"). Returns the day dict or None."""
+    if query.strip().isdigit():
+        return next((day for day in days if day["day_number"] == int(query)), None)
+    hits = _fuzzy_match(query, [day["target"] for day in days], limit=1)
     return days[hits[0][2]] if hits else None
 
 
-def _tagged(program):
+def _exercises_with_day(program):
     """Every plan exercise, tagged with the day it belongs to."""
-    return [{"day_number": d["day_number"], "day_target": d["target"], **e}
-            for d in program["days"] for e in d["weight_exercises"]]
+    return [{"day_number": day["day_number"], "day_target": day["target"], **exercise}
+            for day in program["days"] for exercise in day["weight_exercises"]]
 
 
 def pick_exercises(program, name):
     """Best plan exercises matching name, each tagged with its day."""
-    exercises = _tagged(program)
-    return [exercises[i] for _, _, i in _fuzzy(name, [e["exercise"] for e in exercises], limit=MAX_EXERCISE_HITS)]
+    exercises = _exercises_with_day(program)
+    hits = _fuzzy_match(name, [exercise["exercise"] for exercise in exercises], limit=MAX_EXERCISE_HITS)
+    return [exercises[index] for _, _, index in hits]
 
 
-def _fmt_number(n):
-    return str(int(n)) if n == int(n) else str(n)
-
-
-def readable(value, video=False):
+def make_readable(value, include_video=False):
     """Shape a result for the model: {low, high} ranges -> "3" / "8-12" (so high=None never reads as open-ended),
     and blanks, internal matching fields and (unless wanted) video links dropped."""
-    drop = _INTERNAL_FIELDS | (set() if video else {"video_url"})
+    hidden_keys = _INTERNAL_FIELDS | (set() if include_video else {"video_url"})
     if isinstance(value, dict):
         if set(value) == {"low", "high"}:
-            low, high = value["low"], value["high"]
-            return _fmt_number(low) if high is None or high == low else f"{_fmt_number(low)}-{_fmt_number(high)}"
-        return {k: readable(v, video) for k, v in value.items() if v is not None and k not in drop}
+            return format_range(value["low"], value["high"])
+        return {key: make_readable(item, include_video) for key, item in value.items()
+                if item is not None and key not in hidden_keys}
     if isinstance(value, list):
-        return [readable(v, video) for v in value]
+        return [make_readable(item, include_video) for item in value]
     return value
 
 
-def _resolve(query, key, values):
+def _resolve_filter_values(query, key, known_values):
     """Canonical values a loose term means: group word, rules.py shorthand ("db"), or a close spelling."""
     if query.strip().lower() in _BODYPART_GROUPS and key == "ref_bodypart":
         return _BODYPART_GROUPS[query.strip().lower()]
-    if ruled := rule_based_fields(query).get(key):
-        return {ruled}  # rules win: fuzzy would also match "bb" inside "Dumbbell"
-    return {values[i] for _, score, i in _fuzzy(query, values, limit=None) if score >= RESOLVE_CUTOFF}
+    if ruled_value := rule_based_fields(query).get(key):
+        return {ruled_value}  # rules win: fuzzy would also match "bb" inside "Dumbbell"
+    hits = _fuzzy_match(query, known_values, limit=None)
+    return {known_values[index] for _, score, index in hits if score >= RESOLVE_CUTOFF}
 
 
-def filter_exercises(program, field=None, above=None, below=None, missing=False, equipment=None, bodypart=None):
+def filter_exercises(program, field=None, above=None, below=None, only_missing=False, equipment=None, bodypart=None):
     """Every plan exercise tagged with its day; optionally only those whose field range reaches
-    above/below the bounds, or (missing=True) whose field is blank, and/or with that equipment/bodypart."""
-    exercises = _tagged(program)
-    wanted = {key: _resolve(term, key, sorted({e.get(key) for e in exercises} - {None}))
-              for key, term in (("ref_equipment", equipment), ("ref_bodypart", bodypart)) if term}
-    out = []
-    for e in exercises:
-        if any(e.get(key) not in values for key, values in wanted.items()):
+    above/below the bounds, or (only_missing=True) whose field is blank, and/or with that equipment/bodypart."""
+    exercises = _exercises_with_day(program)
+    allowed_values_by_key = {
+        key: _resolve_filter_values(term, key, sorted({exercise.get(key) for exercise in exercises} - {None}))
+        for key, term in (("ref_equipment", equipment), ("ref_bodypart", bodypart)) if term
+    }
+    matches = []
+    for exercise in exercises:
+        if any(exercise.get(key) not in allowed for key, allowed in allowed_values_by_key.items()):
             continue
-        v = e.get(field) if field else None
-        if field and bool(v) == missing:
+        field_value = exercise.get(field) if field else None
+        if field and bool(field_value) == only_missing:
             continue
-        if v:
-            low, high = v["low"], v["high"] if v["high"] is not None else v["low"]
+        if field_value:
+            low = field_value["low"]
+            high = field_value["high"] if field_value["high"] is not None else low
             if (above is not None and high <= above) or (below is not None and low >= below):
                 continue
-        out.append(e)
-    return out
+        matches.append(exercise)
+    return matches
 
 
 def group_by_day(exercises):
     """Day-tagged exercises -> one entry per day, so day number/target aren't repeated on every exercise."""
-    days = {}
-    for e in exercises:
-        day = days.setdefault(e["day_number"], {"day_number": e["day_number"], "target": e["day_target"], "exercises": []})
-        day["exercises"].append({k: v for k, v in e.items() if k not in ("day_number", "day_target")})
-    return list(days.values())
+    days_by_number = {}
+    for exercise in exercises:
+        day = days_by_number.setdefault(
+            exercise["day_number"], {"day_number": exercise["day_number"], "target": exercise["day_target"], "exercises": []})
+        day["exercises"].append({key: value for key, value in exercise.items() if key not in ("day_number", "day_target")})
+    return list(days_by_number.values())
 
 
 def value_counts(program, field):
     """How many plan exercises have each value of field, most common first; blanks count as "not listed"."""
-    values = [readable(e.get(field)) or "not listed" for e in _tagged(program)]
+    values = [make_readable(exercise.get(field)) or "not listed" for exercise in _exercises_with_day(program)]
     return dict(Counter(values).most_common())
 
 
 def rank_alternatives(reference, ref_vectors, query_vector, bodypart, exclude_titles, avoid_equipment, limit):
     """Reference rows for bodypart, minus excluded titles/equipment, most similar to query_vector first."""
-    exclude = {t.lower() for t in exclude_titles}
-    avoid = (avoid_equipment or "").lower()
-    idxs = [i for i, r in enumerate(reference)
-            if r["bodypart"] == bodypart and r["title"].lower() not in exclude
-            and not (avoid and (r["equipment"] or "").lower() == avoid)]
-    idxs.sort(key=lambda i: -float(ref_vectors[i] @ query_vector))
-    return [reference[i] for i in idxs[:limit]]
+    excluded_titles = {title.lower() for title in exclude_titles}
+    avoided_equipment = (avoid_equipment or "").lower()
+    candidate_indexes = [index for index, row in enumerate(reference)
+                         if row["bodypart"] == bodypart and row["title"].lower() not in excluded_titles
+                         and not (avoided_equipment and (row["equipment"] or "").lower() == avoided_equipment)]
+    candidate_indexes.sort(key=lambda index: -float(ref_vectors[index] @ query_vector))
+    return [reference[index] for index in candidate_indexes[:limit]]
 
 
 def _demo():
@@ -153,26 +156,26 @@ def _demo():
         {"exercise": "C", "working_sets": {"low": 2.0, "high": 4.0}},
         {"exercise": "D", "working_sets": None},
     ]}]}
-    assert [e["exercise"] for e in filter_exercises(sets, "working_sets", above=2)] == ["B", "C"]
-    assert [e["exercise"] for e in filter_exercises(sets, "working_sets", below=3)] == ["A", "C"]
+    assert [exercise["exercise"] for exercise in filter_exercises(sets, "working_sets", above=2)] == ["B", "C"]
+    assert [exercise["exercise"] for exercise in filter_exercises(sets, "working_sets", below=3)] == ["A", "C"]
     assert len(filter_exercises(sets)) == 4
-    assert [e["exercise"] for e in filter_exercises(sets, "working_sets", missing=True)] == ["D"]
+    assert [exercise["exercise"] for exercise in filter_exercises(sets, "working_sets", only_missing=True)] == ["D"]
     tagged = {"days": [{"day_number": 2, "target": "arms", "weight_exercises": [
         {"exercise": "DB shoulder press", "ref_equipment": "Dumbbell", "ref_bodypart": "Shoulders"},
         {"exercise": "Rope pushdown", "ref_equipment": "Rope", "ref_bodypart": "Triceps"},
     ]}]}
-    assert [e["exercise"] for e in filter_exercises(tagged, equipment="dumbbell")] == ["DB shoulder press"]
-    assert [e["exercise"] for e in filter_exercises(tagged, bodypart="Triceps")] == ["Rope pushdown"]
-    assert [e["exercise"] for e in filter_exercises(tagged, equipment="db")] == ["DB shoulder press"]
-    assert [e["exercise"] for e in filter_exercises(tagged, bodypart="arms")] == ["Rope pushdown"]
+    assert [exercise["exercise"] for exercise in filter_exercises(tagged, equipment="dumbbell")] == ["DB shoulder press"]
+    assert [exercise["exercise"] for exercise in filter_exercises(tagged, bodypart="Triceps")] == ["Rope pushdown"]
+    assert [exercise["exercise"] for exercise in filter_exercises(tagged, equipment="db")] == ["DB shoulder press"]
+    assert [exercise["exercise"] for exercise in filter_exercises(tagged, bodypart="arms")] == ["Rope pushdown"]
     assert filter_exercises(tagged, equipment="bb") == [], "bb is Barbell, not a fuzzy hit on Dumbbell"
     assert filter_exercises(tagged, equipment="zzz") == []
-    assert readable({"sets": {"low": 3.0, "high": None}, "reps": [{"low": 8.0, "high": 12.0}]}) == {"sets": "3", "reps": ["8-12"]}
+    assert make_readable({"sets": {"low": 3.0, "high": None}, "reps": [{"low": 8.0, "high": 12.0}]}) == {"sets": "3", "reps": ["8-12"]}
     assert value_counts(sets, "working_sets") == {"2": 1, "3": 1, "2-4": 1, "not listed": 1}
     raw = {"exercise": "A", "rest": "2 min", "instructions": None, "video_url": "u", "ref_bodypart": "Chest", "ref_match_score": 0.9}
-    assert readable(raw) == {"exercise": "A", "rest": "2 min", "ref_bodypart": "Chest"}
-    assert readable([raw], video=True)[0]["video_url"] == "u"
-    assert readable({"working_sets": {"low": 2.0, "high": None}}) == {"working_sets": "2"}, "range formatted before blanks dropped"
+    assert make_readable(raw) == {"exercise": "A", "rest": "2 min", "ref_bodypart": "Chest"}
+    assert make_readable([raw], include_video=True)[0]["video_url"] == "u"
+    assert make_readable({"working_sets": {"low": 2.0, "high": None}}) == {"working_sets": "2"}, "range formatted before blanks dropped"
     grouped = group_by_day([{"day_number": 1, "day_target": "x", "exercise": "A"}, {"day_number": 1, "day_target": "x", "exercise": "B"}])
     assert grouped == [{"day_number": 1, "target": "x", "exercises": [{"exercise": "A"}, {"exercise": "B"}]}]
     rests = {"days": [{"day_number": 1, "target": "x", "weight_exercises": [{"rest": "2-3 min"}, {"rest": "2-3 min"}, {"rest": "90 s"}]}]}
@@ -196,7 +199,7 @@ def _demo():
     ]
     vectors = np.array([[1.0, 0.0], [0.9, 0.1], [0.5, 0.5], [0.0, 1.0]])
     ranked = rank_alternatives(reference, vectors, np.array([1.0, 0.0]), "Chest", ["Barbell Bench Press"], "barbell", 5)
-    assert [r["title"] for r in ranked] == ["Dumbbell Bench Press", "Push-up"]
+    assert [row["title"] for row in ranked] == ["Dumbbell Bench Press", "Push-up"]
     assert len(rank_alternatives(reference, vectors, np.array([1.0, 0.0]), "Chest", [], None, 5)) == 3
 
 

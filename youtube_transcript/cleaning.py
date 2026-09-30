@@ -19,11 +19,11 @@ class TranscriptCleaner:
     def clean(self, raw_segments) -> list[TranscriptSegment]:
         cleaned = [
             TranscriptSegment(
-                text=self._remove_bracketed_annotations(self._strip_bidi_controls(s.text)),
-                start=s.start,
-                duration=s.duration,
+                text=self._remove_bracketed_annotations(self._strip_bidi_controls(segment.text)),
+                start=segment.start,
+                duration=segment.duration,
             )
-            for s in raw_segments
+            for segment in raw_segments
         ]
         return self._merge_short_segments(cleaned)
 

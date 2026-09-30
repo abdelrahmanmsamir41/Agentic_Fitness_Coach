@@ -63,7 +63,7 @@ _BODYPART_PATTERNS = _compile_rules(_BODYPART_RULES)
 _TYPE_PATTERNS = _compile_rules(_TYPE_RULES)
 
 
-def _first_rule_match(name, patterns):
+def _find_first_rule_match(name, patterns):
     for pattern, value in patterns:
         if pattern.search(name):
             return value
@@ -75,15 +75,15 @@ def rule_based_fields(name):
     ref_type the name itself spells out. Missing keys mean "no rule fired,
     fall back to the similarity match" for that field."""
     fields = {}
-    equipment = _first_rule_match(name, _EQUIPMENT_PATTERNS)
+    equipment = _find_first_rule_match(name, _EQUIPMENT_PATTERNS)
     if equipment:
         fields["ref_equipment"] = equipment
-    bodypart = _first_rule_match(name, _BODYPART_PATTERNS)
+    bodypart = _find_first_rule_match(name, _BODYPART_PATTERNS)
     if bodypart:
         fields["ref_bodypart"] = bodypart
-    ex_type = _first_rule_match(name, _TYPE_PATTERNS)
-    if ex_type:
-        fields["ref_type"] = ex_type
+    exercise_type = _find_first_rule_match(name, _TYPE_PATTERNS)
+    if exercise_type:
+        fields["ref_type"] = exercise_type
     return fields
 
 

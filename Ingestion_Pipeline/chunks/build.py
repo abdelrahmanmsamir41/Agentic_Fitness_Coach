@@ -1,12 +1,12 @@
 """Build the parent/leaf chunk records described in the ingestion plan,
 for one page (build_chunks) or a whole document's pages (build_all).
 """
-from .leaves import _slug, build_leaves
+from .leaves import build_leaves, slugify
 
 
-def build_chunks(doc_id, document_type, page, extraction, index):
-    page_slug = _slug(extraction["page_topic"])
-    parent_chunk_id = f"{doc_id}:{index:04d}-{page_slug}"
+def build_chunks(doc_id, document_type, page, extraction, position):
+    page_slug = slugify(extraction["page_topic"])
+    parent_chunk_id = f"{doc_id}:{position:04d}-{page_slug}"
 
     parent = {
         "parent_chunk_id": parent_chunk_id,
@@ -21,16 +21,16 @@ def build_chunks(doc_id, document_type, page, extraction, index):
     return parent, leaves
 
 
-def build_all(doc_id, document_type, common, pages, all_extractions):
+def build_all(doc_id, document_type, shared_fields, pages, all_extractions):
     """Builds parent/leaf records for every page, applying the fields
     shared across the whole document (coach_id, effective_date, etc.)."""
     all_parents, all_leaves = [], []
-    for idx, page in enumerate(pages):
+    for position, page in enumerate(pages):
         extraction = all_extractions[page["page_index"]]
-        parent, leaf_chunks = build_chunks(doc_id, document_type, page, extraction, idx)
-        parent.update(common)
+        parent, leaf_chunks = build_chunks(doc_id, document_type, page, extraction, position)
+        parent.update(shared_fields)
         for leaf in leaf_chunks:
-            leaf.update(common)
+            leaf.update(shared_fields)
         all_parents.append(parent)
         all_leaves.extend(leaf_chunks)
     return all_parents, all_leaves

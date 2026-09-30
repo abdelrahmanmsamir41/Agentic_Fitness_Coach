@@ -82,7 +82,7 @@ instead. A single number becomes {{"low": N}} with no "high" (Squat's rir: "2");
 
 def build_training_batch_prompt(tagged_pages):
     """tagged_pages: iterable of (page_index, raw_text)."""
-    pages_block = "\n\n".join(f"=== PAGE {idx} ===\n{text}" for idx, text in tagged_pages)
+    pages_block = "\n\n".join(f"=== PAGE {page_index} ===\n{text}" for page_index, text in tagged_pages)
     return TRAINING_BATCH_PROMPT.format(pages_block=pages_block)
 
 

@@ -37,7 +37,7 @@ class NumberRange(BaseModel):
     high: Optional[float] = Field(default=None, description="Upper bound if this is a range like \"8-12\"; omit for a single number")
 
     @model_validator(mode="after")
-    def _ordered(self):
+    def _swap_reversed_bounds(self):
         # coaches write ranges either way ("1-0" RIR); the model copies them as written
         if self.high is not None and self.high < self.low:
             self.low, self.high = self.high, self.low

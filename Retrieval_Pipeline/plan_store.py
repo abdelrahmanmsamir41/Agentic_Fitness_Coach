@@ -30,11 +30,11 @@ async def search_notes(client_id, query, top_k):
     points = await store_qdrant.search(query, top_k=top_k, filters={
         "client_id": client_id, "active": True, "chunk_type": TEXT_CHUNK_TYPES,
     })
-    return [{"score": round(p.score, 3), "topic": p.payload["page_topic"], "text": p.payload["embed_text"]}
-            for p in points]
+    return [{"score": round(point.score, 3), "topic": point.payload["page_topic"], "text": point.payload["embed_text"]}
+            for point in points]
 
 
-async def reference_bodypart(exercise):
+async def lookup_reference_bodypart(exercise):
     match = (await asyncio.to_thread(match_exercises, [exercise]))[0]
     return match and match["ref_bodypart"]
 
@@ -43,7 +43,7 @@ async def embed_exercise(exercise):
     return (await asyncio.to_thread(embeddings.embed_queries, [exercise]))[0]
 
 
-def reference_set():
+def get_reference_set():
     return embeddings.get_reference(), embeddings.get_reference_embeddings()
 
 

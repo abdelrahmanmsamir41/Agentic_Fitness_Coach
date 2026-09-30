@@ -13,19 +13,20 @@ _THUMBNAIL_SCALE = 0.3  # low-res render is enough to find the content edges
 _INK_THRESHOLD = 250  # grayscale value below which a pixel counts as "ink"
 
 
-def _content_metrics(page):
+def _measure_content(page):
     matrix = fitz.Matrix(_THUMBNAIL_SCALE, _THUMBNAIL_SCALE)
-    pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY, alpha=False)
-    w, h, samples = pix.width, pix.height, pix.samples
+    pixmap = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY, alpha=False)
+    width, height, samples = pixmap.width, pixmap.height, pixmap.samples
 
-    ink_rows = [y for y in range(h) if min(samples[y * w:(y + 1) * w]) < _INK_THRESHOLD]
+    ink_rows = [row for row in range(height) if min(samples[row * width:(row + 1) * width]) < _INK_THRESHOLD]
     if not ink_rows:
         return None
-    ink_cols = [x for x in range(w) if any(samples[y * w + x] < _INK_THRESHOLD for y in range(h))]
-    occupancy_ratio = sum(1 for b in samples if b < _INK_THRESHOLD) / (w * h)
+    ink_cols = [col for col in range(width)
+                if any(samples[row * width + col] < _INK_THRESHOLD for row in range(height))]
+    occupancy_ratio = sum(1 for pixel in samples if pixel < _INK_THRESHOLD) / (width * height)
 
-    px_bbox = fitz.Rect(min(ink_cols), min(ink_rows), max(ink_cols) + 1, max(ink_rows) + 1)
-    return px_bbox * ~matrix, occupancy_ratio  # thumbnail pixels -> PDF points
+    pixel_bbox = fitz.Rect(min(ink_cols), min(ink_rows), max(ink_cols) + 1, max(ink_rows) + 1)
+    return pixel_bbox * ~matrix, occupancy_ratio  # thumbnail pixels -> PDF points
 
 
 def _should_crop(bbox_ratio, occupancy_ratio):
@@ -42,17 +43,17 @@ def cropped_copy(pdf_path):
     doc = fitz.open(pdf_path)
     cropped_pages = []
     for page in doc:
-        metrics = _content_metrics(page)
+        metrics = _measure_content(page)
         if metrics is None:
             continue
         bbox, occupancy_ratio = metrics
         if not _should_crop(bbox.get_area() / page.rect.get_area(), occupancy_ratio):
             continue
-        padded = fitz.Rect(bbox.x0 - _PADDING, bbox.y0 - _PADDING,
+        padded_bbox = fitz.Rect(bbox.x0 - _PADDING, bbox.y0 - _PADDING,
                             bbox.x1 + _PADDING, bbox.y1 + _PADDING) & page.rect
         # cropbox, not mediabox -- set_mediabox silently resets cropbox to an
         # unrelated offset as a side effect (confirmed against a real PDF).
-        page.set_cropbox(padded)
+        page.set_cropbox(padded_bbox)
         cropped_pages.append(page.number)
 
     if not cropped_pages:
@@ -62,10 +63,10 @@ def cropped_copy(pdf_path):
         return
 
     print(f"✂️ autocrop: cropping {len(cropped_pages)} sparse page(s) {cropped_pages}")
-    tmp_path = tempfile.mktemp(suffix=".pdf")
-    doc.save(tmp_path)
+    temp_path = tempfile.mktemp(suffix=".pdf")
+    doc.save(temp_path)
     doc.close()
     try:
-        yield tmp_path
+        yield temp_path
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        Path(temp_path).unlink(missing_ok=True)

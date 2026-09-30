@@ -16,25 +16,25 @@ FUZZY_WEIGHT = 0.3
 THRESHOLD = 0.6
 
 
-def _similarity_match(query, query_vector, ref_vectors, reference):
+def _find_similarity_match(query, query_vector, ref_vectors, reference):
     scores = ref_vectors @ query_vector  # both L2-normalized -> dot product is cosine similarity
-    k = min(TOP_K, len(scores))
-    top_idxs = np.argpartition(scores, -k)[-k:]
+    candidate_count = min(TOP_K, len(scores))
+    top_indexes = np.argpartition(scores, -candidate_count)[-candidate_count:]
 
     query_lower = query.lower()
-    best_idx, best_score = None, -1.0
-    for idx in top_idxs:
+    best_index, best_score = None, -1.0
+    for index in top_indexes:
         # token_sort_ratio doesn't lowercase on its own -- "leg" vs "Leg" would
         # otherwise mismatch at nearly every character and tank a genuinely
         # correct match's fuzzy component for no real reason.
-        fuzzy = fuzz.token_sort_ratio(query_lower, reference[idx]["title"].lower()) / 100
-        combined = (1 - FUZZY_WEIGHT) * float(scores[idx]) + FUZZY_WEIGHT * fuzzy
-        if combined > best_score:
-            best_idx, best_score = idx, combined
+        fuzzy_score = fuzz.token_sort_ratio(query_lower, reference[index]["title"].lower()) / 100
+        combined_score = (1 - FUZZY_WEIGHT) * float(scores[index]) + FUZZY_WEIGHT * fuzzy_score
+        if combined_score > best_score:
+            best_index, best_score = index, combined_score
 
     if best_score < THRESHOLD:
         return None
-    match = reference[best_idx]
+    match = reference[best_index]
     return {
         "ref_type": match["type"],
         "ref_bodypart": match["bodypart"],
@@ -44,9 +44,9 @@ def _similarity_match(query, query_vector, ref_vectors, reference):
     }
 
 
-def _resolve(name, query_vector, ref_vectors, reference):
+def _resolve_exercise(name, query_vector, ref_vectors, reference):
     rule_fields = rule_based_fields(name)
-    match = _similarity_match(name, query_vector, ref_vectors, reference)
+    match = _find_similarity_match(name, query_vector, ref_vectors, reference)
 
     if not rule_fields and match is None:
         return None
@@ -70,10 +70,10 @@ def match_exercises(names):
     ref_vectors = embeddings.get_reference_embeddings()
     query_vectors = embeddings.embed_queries(names)
 
-    return [_resolve(name, query_vectors[i], ref_vectors, reference) for i, name in enumerate(names)]
+    return [_resolve_exercise(name, query_vector, ref_vectors, reference) for name, query_vector in zip(names, query_vectors)]
 
 
-def _unit(vector):
+def _to_unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
 
@@ -85,19 +85,19 @@ def _demo():
     ref_vectors = embeddings.normalize(np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32))
 
     # rule beats a confident match that disagrees with it
-    close_vector = _unit(np.array([0.95, 0.05], dtype=np.float32))
-    match = _resolve("Cable incline chest press", close_vector, ref_vectors, reference)
+    close_vector = _to_unit_vector(np.array([0.95, 0.05], dtype=np.float32))
+    match = _resolve_exercise("Cable incline chest press", close_vector, ref_vectors, reference)
     assert match["ref_equipment"] == "Cable", "keyword rule should override the matched row's equipment"
     assert match["ref_bodypart"] == "Chest", "unmatched-by-rule fields still come from the similarity match"
 
     # rule fires even with no confident similarity match at all
-    far_vector = _unit(np.array([-1.0, -0.2], dtype=np.float32))
-    rule_only = _resolve("Barbell some made-up lift nobody has heard of", far_vector, ref_vectors, reference)
+    far_vector = _to_unit_vector(np.array([-1.0, -0.2], dtype=np.float32))
+    rule_only = _resolve_exercise("Barbell some made-up lift nobody has heard of", far_vector, ref_vectors, reference)
     assert rule_only == {"ref_type": None, "ref_bodypart": None,
                           "ref_equipment": "Barbell", "ref_level": None, "ref_match_score": None}
 
     # neither a rule nor a confident match -> nothing to add
-    no_match = _resolve("Completely unrelated made-up thing", far_vector, ref_vectors, reference)
+    no_match = _resolve_exercise("Completely unrelated made-up thing", far_vector, ref_vectors, reference)
     assert no_match is None
 
     # case must not affect the fuzzy tiebreak -- tied cosine (identical vector),
@@ -106,13 +106,13 @@ def _demo():
     # wrong "Seated finger curl", 79/100) but 100/100 once both are lowercased
     # -- this exact pairing is what shipped the real bug, a synthetic
     # all-same-case example doesn't reproduce it.
-    tied_vector = _unit(np.array([1.0, 1.0], dtype=np.float32))
+    tied_vector = _to_unit_vector(np.array([1.0, 1.0], dtype=np.float32))
     case_reference = [
         {"title": "Seated Leg Curl", "type": "Strength", "bodypart": "Hamstrings", "equipment": "Machine", "level": "Beginner"},
         {"title": "Seated finger curl", "type": "Strength", "bodypart": "Forearms", "equipment": "Barbell", "level": "Beginner"},
     ]
     case_vectors = np.array([tied_vector, tied_vector])
-    match = _resolve("Seated leg curl", tied_vector, case_vectors, case_reference)
+    match = _resolve_exercise("Seated leg curl", tied_vector, case_vectors, case_reference)
     assert match["ref_bodypart"] == "Hamstrings", "case difference must not lose to a same-case wrong title"
 
 

@@ -32,8 +32,9 @@ async def assign_day_numbers(day_entries, page_topics):
     print(f"📅 assigning day numbers for {len(page_topics)} page(s) against {len(day_entries)} day(s)...")
     result = await structured_model.ainvoke(prompt)
 
-    valid_days = {d for d, _ in day_entries}
-    return {a.page_index: a.day_number for a in result.assignments if a.day_number in valid_days}
+    valid_day_numbers = {day_number for day_number, _ in day_entries}
+    return {assignment.page_index: assignment.day_number
+            for assignment in result.assignments if assignment.day_number in valid_day_numbers}
 
 
 def _is_split_table(extraction):
@@ -93,14 +94,14 @@ def resolve_exercise_reference(doc_id, all_extractions):
     if not exercises:
         return
 
-    names = [e.get("exercise", "") for e in exercises]
+    names = [exercise.get("exercise", "") for exercise in exercises]
     matches = exercise_reference.match_exercises(names)
-    matched = 0
+    matched_count = 0
     for entity, match in zip(exercises, matches):
         if match:
             entity.update(match)
-            matched += 1
-    print(f"🏋️ [{doc_id}] matched {matched}/{len(exercises)} exercise(s) against the reference dataset")
+            matched_count += 1
+    print(f"🏋️ [{doc_id}] matched {matched_count}/{len(exercises)} exercise(s) against the reference dataset")
 
 
 def build_program_view(all_extractions):
@@ -113,8 +114,8 @@ def build_program_view(all_extractions):
     of being duplicated onto every training day or attached to a rest day.
     """
     day_entries = _split_table_day_entries(all_extractions)
-    days = [{"day_number": n, "target": target, "weight_exercises": [], "cardio_entries": []}
-            for n, target in day_entries]
+    days = [{"day_number": day_number, "target": target, "weight_exercises": [], "cardio_entries": []}
+            for day_number, target in day_entries]
     days_by_number = {day["day_number"]: day for day in days}
 
     general_cardio = []
@@ -137,7 +138,8 @@ async def enrich_document(doc_id, all_extractions):
 
 
 def _demo():
-    other = lambda: {"category": "other", "program_days": [], "weight_exercises": [], "cardio_entries": []}
+    def other():
+        return {"category": "other", "program_days": [], "weight_exercises": [], "cardio_entries": []}
 
     table = {"category": "program_structure", "program_days": [
         {"day_number": 1, "target": "chest"}, {"day_number": 2, "target": "rest"},

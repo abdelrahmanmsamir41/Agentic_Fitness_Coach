@@ -19,22 +19,22 @@ def _expand_grid(table_tag):
     grid = []
     rowspan_carry = {}  # col_index -> [rows_remaining, value]
 
-    for tr in table_tag.find_all("tr"):
+    for row_tag in table_tag.find_all("tr"):
         row = []
-        col = 0
+        col_index = 0
 
         def fill_carried():
-            nonlocal col
-            while col in rowspan_carry:
-                carry = rowspan_carry[col]
+            nonlocal col_index
+            while col_index in rowspan_carry:
+                carry = rowspan_carry[col_index]
                 row.append(carry[1])
                 carry[0] -= 1
                 if carry[0] <= 0:
-                    del rowspan_carry[col]
-                col += 1
+                    del rowspan_carry[col_index]
+                col_index += 1
 
         fill_carried()
-        for cell in tr.find_all(["td", "th"], recursive=False):
+        for cell in row_tag.find_all(["td", "th"], recursive=False):
             fill_carried()
             text = cell.get_text(" ", strip=True)
             colspan = int(cell.get("colspan", 1) or 1)
@@ -42,32 +42,32 @@ def _expand_grid(table_tag):
             for _ in range(colspan):
                 row.append(text)
                 if rowspan > 1:
-                    rowspan_carry[col] = [rowspan - 1, text]
-                col += 1
+                    rowspan_carry[col_index] = [rowspan - 1, text]
+                col_index += 1
             fill_carried()
         grid.append(row)
 
-    width = max((len(r) for r in grid), default=0)
-    return [r + [""] * (width - len(r)) for r in grid]
+    width = max((len(row) for row in grid), default=0)
+    return [row + [""] * (width - len(row)) for row in grid]
 
 
-def _slugify(header, normalize):
+def _slugify_header(header, normalize):
     text = normalize(header) if normalize else header
     text = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     return text or "col"
 
 
-def _dedupe(keys):
-    seen = {}
-    out = []
+def _dedupe_keys(keys):
+    seen_counts = {}
+    unique_keys = []
     for key in keys:
-        if key not in seen:
-            seen[key] = 0
-            out.append(key)
+        if key not in seen_counts:
+            seen_counts[key] = 0
+            unique_keys.append(key)
         else:
-            seen[key] += 1
-            out.append(f"{key}_{seen[key]}")
-    return out
+            seen_counts[key] += 1
+            unique_keys.append(f"{key}_{seen_counts[key]}")
+    return unique_keys
 
 
 def _render_grid(grid, normalize):
@@ -83,10 +83,10 @@ def _render_grid(grid, normalize):
         return "\n".join(lines)
 
     header, *rows = grid
-    keys = _dedupe([_slugify(h, normalize) for h in header])
+    keys = _dedupe_keys([_slugify_header(column, normalize) for column in header])
     lines = ["TABLE[type=data]", "columns: " + ", ".join(keys), ""]
     for row in rows:
-        cells = [normalize(c) if normalize else c for c in row]
+        cells = [normalize(cell) if normalize else cell for cell in row]
         lines.append(" | ".join(cells))
     return "\n".join(lines)
 
@@ -99,10 +99,10 @@ def render_tables(text, normalize=None):
     kept as a parameter instead of importing it, so this module has no
     fitness-specific knowledge of its own.
     """
-    def _replace(match):
+    def _render_table_match(match):
         table_tag = BeautifulSoup(match.group(0), "lxml").find("table")
         if table_tag is None:
             return match.group(0)
         return _render_grid(_expand_grid(table_tag), normalize)
 
-    return _TABLE_BLOCK.sub(_replace, text)
+    return _TABLE_BLOCK.sub(_render_table_match, text)

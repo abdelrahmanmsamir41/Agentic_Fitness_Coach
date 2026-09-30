@@ -35,8 +35,8 @@ async def tool_errors_to_messages(request, handler):
     """A failing tool (Mongo/Qdrant down, bad args) becomes a message the model can react to, not a crash."""
     try:
         return await handler(request)
-    except Exception as e:
-        return ToolMessage(content=f"Tool error: {e}", tool_call_id=request.tool_call["id"])
+    except Exception as error:
+        return ToolMessage(content=f"Tool error: {error}", tool_call_id=request.tool_call["id"])
 
 
 @wrap_model_call
@@ -87,36 +87,39 @@ async def ask(agent, question, client_id, thread_id):
 
 async def stream_answer(agent, question, client_id, thread_id):
     """Yields the answer's text as the model produces it; tool calls and tool results are skipped."""
-    printed, last = {}, {}  # message id -> text yielded so far / last chunk yielded
-    async for chunk, meta in agent.astream(
+    text_by_message_id, last_chunk_by_message_id = {}, {}  # message id -> text yielded so far / last chunk yielded
+    async for chunk, metadata in agent.astream(
         {"messages": [{"role": "user", "content": question}]},
         config={"configurable": {"thread_id": thread_id}},
         context=TrainerContext(client_id=client_id),
         stream_mode="messages",
     ):
-        if meta.get("langgraph_node") != "model" or chunk.type != "AIMessageChunk" or not chunk.text:
+        if metadata.get("langgraph_node") != "model" or chunk.type != "AIMessageChunk" or not chunk.text:
             continue
         # ponytail: Gemini occasionally re-sends the whole message or its last chunk; exact repeats are dropped,
         # which would also drop a genuinely repeated sentence-sized chunk (never seen in practice)
-        if chunk.text in (printed.get(chunk.id), last.get(chunk.id)):
+        if chunk.text in (text_by_message_id.get(chunk.id), last_chunk_by_message_id.get(chunk.id)):
             continue
-        printed[chunk.id] = printed.get(chunk.id, "") + chunk.text
-        last[chunk.id] = chunk.text
+        text_by_message_id[chunk.id] = text_by_message_id.get(chunk.id, "") + chunk.text
+        last_chunk_by_message_id[chunk.id] = chunk.text
         yield chunk.text
 
 
-async def turn_stats(agent, thread_id):
+async def format_turn_stats(agent, thread_id):
     """Tool calls and summed token usage of the last question, read back from the saved chat state."""
     messages = (await agent.aget_state({"configurable": {"thread_id": thread_id}})).values["messages"]
-    last_human = max(i for i, m in enumerate(messages) if m.type == "human")
-    ai = [m for m in messages[last_human + 1:] if m.type == "ai"]
-    tools = [f"{c['name']}({c['args']})" for m in ai for c in m.tool_calls]
-    usage = [m.usage_metadata or {} for m in ai]
-    total = lambda key, sub=None: sum((u.get(sub, {}) if sub else u).get(key, 0) or 0 for u in usage)
-    return (f"🔧 {', '.join(tools) or 'no tools'}\n"
-            f"🪙 in {total('input_tokens')} (cached {total('cache_read', 'input_token_details')}) · "
-            f"out {total('output_tokens')} (thinking {total('reasoning', 'output_token_details')}) · "
-            f"total {total('total_tokens')} · {len(ai)} model call(s)")
+    last_question_index = max(index for index, message in enumerate(messages) if message.type == "human")
+    ai_messages = [message for message in messages[last_question_index + 1:] if message.type == "ai"]
+    tool_calls = [f"{call['name']}({call['args']})" for message in ai_messages for call in message.tool_calls]
+    usages = [message.usage_metadata or {} for message in ai_messages]
+
+    def sum_tokens(key, details_key=None):
+        return sum((usage.get(details_key, {}) if details_key else usage).get(key, 0) or 0 for usage in usages)
+
+    return (f"🔧 {', '.join(tool_calls) or 'no tools'}\n"
+            f"🪙 in {sum_tokens('input_tokens')} (cached {sum_tokens('cache_read', 'input_token_details')}) · "
+            f"out {sum_tokens('output_tokens')} (thinking {sum_tokens('reasoning', 'output_token_details')}) · "
+            f"total {sum_tokens('total_tokens')} · {len(ai_messages)} model call(s)")
 
 
 async def chat(client_id):
@@ -131,7 +134,7 @@ async def chat(client_id):
             while question := input("> ").strip():
                 async for text in stream_answer(agent, question, client_id, thread_id):
                     print(text, end="", flush=True)
-                print("\n" + await turn_stats(agent, thread_id) + "\n")
+                print("\n" + await format_turn_stats(agent, thread_id) + "\n")
         finally:
             checkpointer.delete_thread(thread_id)  # conversation over: drop its history; the 30-day TTL covers hard kills
             print("🧹 chat history cleared")

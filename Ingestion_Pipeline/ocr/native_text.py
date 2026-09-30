@@ -20,20 +20,20 @@ def extract_native_text(pdf_path):
     # blocks joined with blank lines, not plain get_text() -- that returns
     # single-newline-separated text that markdown folds into one paragraph.
     doc = fitz.open(pdf_path)
-    by_page = {}
+    text_by_page = {}
     for page in doc:
         blocks = page.get_text("blocks", sort=True)
-        by_page[page.number] = "\n\n".join(b[4].strip() for b in blocks if b[4].strip())
+        text_by_page[page.number] = "\n\n".join(block[4].strip() for block in blocks if block[4].strip())
     doc.close()
-    return by_page
+    return text_by_page
 
 
 def _significant_words(text):
-    return {w.lower() for w in _WORD.findall(text)}
+    return {word.lower() for word in _WORD.findall(text)}
 
 
-def _ocr_missed_the_page(native, ocr_markdown):
-    native_words = _significant_words(native)
+def _did_ocr_miss_page(native_page_text, ocr_markdown):
+    native_words = _significant_words(native_page_text)
     if not native_words:
         return False
     overlap = len(native_words & _significant_words(ocr_markdown)) / len(native_words)
@@ -41,24 +41,24 @@ def _ocr_missed_the_page(native, ocr_markdown):
 
 
 def prefer_native_when_ocr_diverges(pages, native_text_by_page):
-    swapped = []
+    swapped_pages = []
     for page in pages:
-        native = native_text_by_page.get(page["page_index"], "").strip()
-        if len(native) < _MIN_NATIVE_LEN:
+        native_page_text = native_text_by_page.get(page["page_index"], "").strip()
+        if len(native_page_text) < _MIN_NATIVE_LEN:
             continue
-        if _ocr_missed_the_page(native, page["markdown"]):
-            page["markdown"] = native
-            swapped.append(page["page_index"])
-    if swapped:
-        print(f"🔀 native text preferred over OCR for pages {swapped} (OCR missed the content)")
+        if _did_ocr_miss_page(native_page_text, page["markdown"]):
+            page["markdown"] = native_page_text
+            swapped_pages.append(page["page_index"])
+    if swapped_pages:
+        print(f"🔀 native text preferred over OCR for pages {swapped_pages} (OCR missed the content)")
     return pages
 
 
 def _looks_garbled(text):
-    chars = [c for c in text if not c.isspace()]
-    if len(chars) < _MIN_JUDGEABLE_LEN:
+    visible_chars = [char for char in text if not char.isspace()]
+    if len(visible_chars) < _MIN_JUDGEABLE_LEN:
         return False
-    return sum(1 for c in chars if c.isalpha()) / len(chars) < _MIN_ALPHA_RATIO
+    return sum(1 for char in visible_chars if char.isalpha()) / len(visible_chars) < _MIN_ALPHA_RATIO
 
 
 def flag_unreliable_pages(pages, native_text_by_page):
@@ -78,15 +78,15 @@ def append_missing_native_numbers(pages, native_text_by_page):
     number native has that OCR's output doesn't gets appended, not swapped
     in. No length gate: a short prescription snippet is exactly the case
     this exists for, unlike the whole-page replace above."""
-    appended = []
+    appended_pages = []
     for page in pages:
-        native = native_text_by_page.get(page["page_index"], "").strip()
-        if not native:
+        native_page_text = native_text_by_page.get(page["page_index"], "").strip()
+        if not native_page_text:
             continue
-        missing = set(_NUMBER.findall(native)) - set(_NUMBER.findall(page["markdown"]))
-        if missing:
-            page["markdown"] += f"\n\n{native}"
-            appended.append(page["page_index"])
-    if appended:
-        print(f"➕ appended missing native numbers for pages {appended}")
+        missing_numbers = set(_NUMBER.findall(native_page_text)) - set(_NUMBER.findall(page["markdown"]))
+        if missing_numbers:
+            page["markdown"] += f"\n\n{native_page_text}"
+            appended_pages.append(page["page_index"])
+    if appended_pages:
+        print(f"➕ appended missing native numbers for pages {appended_pages}")
     return pages

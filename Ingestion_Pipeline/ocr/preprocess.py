@@ -10,7 +10,7 @@ from text_utils import compile_word_boundary_pattern
 
 from . import tables
 
-_IMG = re.compile(r"<div[^>]*>\s*<img[^>]*>\s*</div>|<img[^>]*>|!\[[^\]]*\]\([^)]*\)", re.DOTALL)
+_IMAGE = re.compile(r"<div[^>]*>\s*<img[^>]*>\s*</div>|<img[^>]*>|!\[[^\]]*\]\([^)]*\)", re.DOTALL)
 _STYLE_BORDER_ATTR = re.compile(r"\s*(style|border)\s*=\s*(\"[^\"]*\"|'[^']*'|\S+)", re.DOTALL)
 _WHITESPACE = re.compile(r"[ \t ]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
@@ -75,7 +75,7 @@ def _expand_terms(text):
     text = _PRESCRIPTION_RE.sub(_expand_prescription, text)
     text = _METHOD_RE.sub(_expand_method, text)
     text = _PROGRAM_RE.sub(_expand_program, text)
-    text = _WU_SET.sub(lambda m: "Warm-up" if m.group(0)[0].isupper() else "warm-up", text)
+    text = _WU_SET.sub(lambda match: "Warm-up" if match.group(0)[0].isupper() else "warm-up", text)
     return text
 
 
@@ -83,7 +83,7 @@ def strip_noise(text):
     # Tables first: parse -> normalize -> compact-render, instead of passing
     # raw <table><tr><td> HTML straight to the LLM (see ingestion/tables.py).
     text = tables.render_tables(text, normalize=_expand_terms)
-    text = _IMG.sub("", text)
+    text = _IMAGE.sub("", text)
     text = _STYLE_BORDER_ATTR.sub("", text)
     text = _expand_terms(text)
     text = html.unescape(text)

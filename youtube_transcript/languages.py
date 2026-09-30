@@ -11,10 +11,10 @@ def list_languages(url_or_id: str) -> dict:
     transcript_list = YouTubeTranscriptApi().list(video_id)
 
     manual, auto_generated, translatable_to = [], [], set()
-    for t in transcript_list:
-        (auto_generated if t.is_generated else manual).append(t.language_code)
-        if t.is_translatable:
-            translatable_to.update(lang.language_code for lang in t.translation_languages)
+    for transcript in transcript_list:
+        (auto_generated if transcript.is_generated else manual).append(transcript.language_code)
+        if transcript.is_translatable:
+            translatable_to.update(language.language_code for language in transcript.translation_languages)
 
     return {
         "manual": sorted(manual),

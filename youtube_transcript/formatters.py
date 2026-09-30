@@ -16,7 +16,7 @@ def format_timestamp(seconds: float) -> str:
 
 
 def export_txt(segments: list[TranscriptSegment]) -> str:
-    return "\n".join(f"[{format_timestamp(s.start)}] {s.text}" for s in segments)
+    return "\n".join(f"[{format_timestamp(segment.start)}] {segment.text}" for segment in segments)
 
 
 def export_srt(segments: list[TranscriptSegment]) -> str:
