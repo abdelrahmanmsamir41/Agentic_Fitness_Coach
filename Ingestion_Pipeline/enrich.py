@@ -83,25 +83,43 @@ def resolve_exercise_reference(doc_id, all_extractions):
     print_step(f"🏋️ [{doc_id}] matched {matched_count}/{len(exercises)} exercise(s) against the reference dataset")
 
 
+def _program_day_entries(all_extractions):
+    """The split table's (day_number, target) list, plus days only named by inline "DAY N" headings
+    (plans with no split table). The split table's target wins when both name a day."""
+    targets = dict(_split_table_day_entries(all_extractions))
+    for page_index in sorted(all_extractions):
+        for day in all_extractions[page_index]["program_days"]:
+            targets.setdefault(day["day_number"], day["target"])
+    return sorted(targets.items())
+
+
+def _without_day_number(entity):
+    """The day already holds it -- and an entity-level copy (often null) would overwrite the day's
+    own day_number wherever the two are merged (matching._exercises_with_day)."""
+    return {key: value for key, value in entity.items() if key != "day_number"}
+
+
 def build_program_view(all_extractions):
-    """Day-by-day view: each split-table day gets the exercises/cardio of pages resolved to it,
-    in document order, each exercise stamped with its 1-based "order" within the day.
+    """Day-by-day view: each day gets the exercises/cardio resolved to it, in document order, each
+    exercise stamped with its 1-based "order" within the day. An entity's own day_number (inline
+    "DAY N" headings) wins over its page's (split-table resolution), since a day can start mid-page.
     Cardio not tied to a day goes in general_cardio instead of being copied onto every day.
     """
-    day_entries = _split_table_day_entries(all_extractions)
     days = [{"day_number": day_number, "target": target, "weight_exercises": [], "cardio_entries": []}
-            for day_number, target in day_entries]
+            for day_number, target in _program_day_entries(all_extractions)]
     days_by_number = {day["day_number"]: day for day in days}
 
     general_cardio = []
     for page_index in sorted(all_extractions):  # dict order follows the model's reply, not the PDF
         extraction = all_extractions[page_index]
-        day = days_by_number.get(extraction.get("day_number"))
-        if day is not None:
-            day["weight_exercises"].extend(extraction["weight_exercises"])
-            day["cardio_entries"].extend(extraction["cardio_entries"])
-        elif extraction["cardio_entries"]:
-            general_cardio.extend(extraction["cardio_entries"])
+        page_day = days_by_number.get(extraction.get("day_number"))
+        for field in ("weight_exercises", "cardio_entries"):
+            for entity in extraction[field]:
+                day = days_by_number.get(entity.get("day_number")) or page_day
+                if day is not None:
+                    day[field].append(_without_day_number(entity))
+                elif field == "cardio_entries":
+                    general_cardio.append(_without_day_number(entity))
 
     for day in days:  # copies: the extraction's own entities also feed the chunks
         day["weight_exercises"] = [{**exercise, "order": order}
@@ -148,6 +166,25 @@ def _demo():
     ]
     assert view["general_cardio"] == [{"activity": "Treadmill"}]
     assert "order" not in all_extractions[1]["weight_exercises"][0], "order must not leak into the chunks' entities"
+
+    inline = {  # no split table; page 1 opens with the tail of day 1 before DAY 2's heading
+        0: {**other(), "category": "weight_exercise", "program_days": [{"day_number": 1, "target": "Pull"}],
+            "weight_exercises": [{"exercise": "Pull-ups", "day_number": 1}]},
+        1: {**other(), "category": "weight_exercise", "program_days": [{"day_number": 2, "target": "Push"}],
+            "weight_exercises": [{"exercise": "Curls", "day_number": 1}, {"exercise": "Dips", "day_number": 2}],
+            "cardio_entries": [{"activity": "Row", "day_number": None}]},
+    }
+    view = build_program_view(inline)
+    assert view["days"] == [
+        {"day_number": 1, "target": "Pull", "weight_exercises": [
+            {"exercise": "Pull-ups", "order": 1}, {"exercise": "Curls", "order": 2}], "cardio_entries": []},
+        {"day_number": 2, "target": "Push", "weight_exercises": [{"exercise": "Dips", "order": 1}], "cardio_entries": []},
+    ], "entity day_number groups across the page break, and is stripped from the view's copies"
+    assert view["general_cardio"] == [{"activity": "Row"}]
+
+    table_and_inline = {0: table, 1: {**other(), "program_days": [{"day_number": 1, "target": "CHEST DAY"}]}}
+    assert [day["target"] for day in build_program_view(table_and_inline)["days"]] == ["chest", "rest"], \
+        "the split table's target wins over an inline heading for the same day"
 
 
 if __name__ == "__main__":

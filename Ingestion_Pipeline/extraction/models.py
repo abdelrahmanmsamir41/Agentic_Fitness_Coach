@@ -38,6 +38,13 @@ class NumberRange(BaseModel):
         return self
 
 
+# plans without a split table mark days inline ("DAY 2 - Push"), and a day can run across a page break
+_ENTITY_DAY_NUMBER_DESCRIPTION = (
+    "N of the nearest \"DAY N\" heading above this entry in reading order -- including one on an earlier page "
+    "when this page continues that day; null if the plan has no such inline day headings"
+)
+
+
 class WeightExerciseEntity(BaseModel):
     exercise: str = Field(description="Exercise name")
     working_sets: Optional[NumberRange] = Field(default=None, description="Number of working sets")
@@ -47,6 +54,7 @@ class WeightExerciseEntity(BaseModel):
     rest: Optional[str] = Field(default=None, description="Rest duration between sets, e.g. \"60-90s\"")
     instructions: Optional[str] = Field(default=None, description="Coaching notes or technique cues for this exercise")
     video_url: Optional[str] = Field(default=None, description="Link to a demo video, if present")
+    day_number: Optional[int] = Field(default=None, description=_ENTITY_DAY_NUMBER_DESCRIPTION)
 
 
 class CardioEntity(BaseModel):
@@ -57,6 +65,7 @@ class CardioEntity(BaseModel):
     timing: Optional[str] = Field(default=None, description="When to do it, e.g. \"post-workout\"")
     instructions: Optional[str] = Field(default=None, description="Coaching notes for this activity")
     video_url: Optional[str] = Field(default=None, description="Link to a demo video, if present")
+    day_number: Optional[int] = Field(default=None, description=_ENTITY_DAY_NUMBER_DESCRIPTION)
 
 
 class GlossaryTermEntity(BaseModel):
@@ -81,7 +90,7 @@ class TrainingSectionResult(BaseModel):
     cardio_entries: List[CardioEntity] = Field(default_factory=list, description="Cardio entries -- populate whenever the page has any, regardless of category")
     glossary_terms: List[GlossaryTermEntity] = Field(default_factory=list, description="Term definitions -- populate whenever the page has any, regardless of category")
     advice_items: List[AdviceEntity] = Field(default_factory=list, description="Advice entries -- populate whenever the page has any, regardless of category")
-    program_days: List[ProgramDayEntity] = Field(default_factory=list, description="Day/split entries, only when category is \"program_structure\" (the plan's real multi-day split table -- not a standalone single-day \"rest_day\" page)")
+    program_days: List[ProgramDayEntity] = Field(default_factory=list, description="Day/split entries: every row of the plan's multi-day split table (category \"program_structure\"), or one entry per inline \"DAY N - <target>\" heading that starts a day on this page")
 
 
 class TrainingBatchResult(BaseModel):

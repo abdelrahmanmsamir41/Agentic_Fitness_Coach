@@ -44,7 +44,8 @@ def _format_details(entity, skipped_keys):
 
 
 def _make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, index, suffix_key, entity, embed_text, chunk_type):
-    day_number = extraction.get("day_number")
+    # an entity's own day (inline "DAY N" headings) wins over its page's: a day can start mid-page
+    day_number = (entity or {}).get("day_number") or extraction.get("day_number")
     if day_number is not None:
         # a bare digit embeds with little signal; day_number stays a payload field for exact filtering
         embed_text = f"Day {day_number} - {embed_text}"
@@ -66,7 +67,7 @@ def _build_weight_exercise_leaves(parent_chunk_id, doc_id, document_type, page, 
     leaves = []
     for index, entity in enumerate(extraction["weight_exercises"]):
         name = entity.get("exercise") or f"item-{index}"
-        details = _format_details(entity, {"exercise", "video_url", "ref_match_score"})
+        details = _format_details(entity, {"exercise", "video_url", "ref_match_score", "day_number"})
         embed_text = f"{extraction['page_topic']} > {name}: " + ", ".join(details)
         leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, index, name, entity, embed_text, "weight_exercise"))
     return leaves
@@ -76,7 +77,7 @@ def _build_cardio_leaves(parent_chunk_id, doc_id, document_type, page, extractio
     leaves = []
     for index, entity in enumerate(extraction["cardio_entries"]):
         name = entity.get("activity") or f"cardio-{index}"
-        details = _format_details(entity, {"activity", "video_url"})
+        details = _format_details(entity, {"activity", "video_url", "day_number"})
         embed_text = f"{extraction['page_topic']} > Cardio - {name}: " + ", ".join(details)
         leaves.append(_make_leaf(parent_chunk_id, doc_id, document_type, page, extraction, index, name, entity, embed_text, "cardio"))
     return leaves

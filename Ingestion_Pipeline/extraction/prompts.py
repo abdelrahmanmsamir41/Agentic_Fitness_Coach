@@ -32,6 +32,10 @@ For each page:
      from "program_structure": that's the whole week's table, this is a single day's marker.
    - "marketing": promo codes, discounts, "order now" calls to action -- not coaching content.
    - "other": anything that doesn't fit the above (e.g. a bare cover title with no body).
+3. If the plan marks days with inline headings ("DAY 2 – Push + Abs") instead of a split table,
+   add one program_days entry per heading on its page, and set each exercise/cardio entry's
+   day_number to the nearest DAY heading above it -- the one exception to processing pages
+   independently: a page that opens mid-day continues the previous page's day.
 
 OCR quirks to account for:
 - Headings are sometimes marked with "#"/"##" and sometimes not, depending on OCR accuracy --

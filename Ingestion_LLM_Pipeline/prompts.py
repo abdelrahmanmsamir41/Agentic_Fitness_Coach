@@ -15,6 +15,9 @@ Per page:
   marketing: promo codes, discounts, "order now"
   other: anything else (e.g. a bare cover or title page)
 - Fill EVERY list that has matching content on the page, not only the category's.
+- Inline day headings ("DAY 2 – Push + Abs") instead of a split table: add one program_days entry per heading
+  on its page, and set each exercise/cardio entry's day_number to the nearest DAY heading above it -- a page
+  that opens mid-day continues the previous page's day.
 
 Values:
 - Never change numbers, units or URLs. Keep exercise names, coach terminology and Arabic exactly as written.

@@ -24,7 +24,12 @@ reduce the number of outcomed tokens from each tools
 
 how tio store pdfs
 
+you forgot about the recipes book and the diet plan foringestion and retrieval
+also the dietary alternatives 
 
+adding links for each exercise 
+
+put calisthinix in consideration 
 --------------------------------------------------------------------------------------------------------------
 
 
@@ -84,3 +89,97 @@ also the odrder of text it self like a paragraph under a heading not its origina
 Named in the text but correctly not implemented yet (YAGNI at current scale — 1 coach, handful of PDFs):
 Parallelization/Ray/Dask, distributed embedding, horizontal scaling, QPS/rate limiting, multi-level caching, cost/observability dashboards, page-by-page streaming for huge PDFs, hybrid search + reranking, CDC-style near-real-time indexing.
 Add these when: you're ingesting for multiple coaches concurrently (parallelization), a doc actually approaches thousands of pages (streaming), or retrieval quality visibly degrades as chunk count grows (hybrid+rerank) — not before.
+
+--------------------------------------------------------------------------------------------------------------
+FUTURE STEPS TO SHIP (roadmap, 2026-09-30)
+--------------------------------------------------------------------------------------------------------------
+
+Suggested order: 1 -> 2 -> 3+4+5 together -> 8 -> 7
+
+MUST-HAVE BEFORE REAL USERS
+1- packaging: replace the sys.path hacks with a real package (pyproject.toml, pip install -e .), pin dependency versions, add a Dockerfile.
+   plan hosting for Mongo + Qdrant (Qdrant already remote) and for the BGE-m3 model (~2GB, loads in-process, slow cold start).
+2- one ingestion pipeline: pick the LLM pipeline or the OCR one (or OCR only as a fallback for scanned PDFs with no text layer) and delete the other.
+   known gap: in the LLM pipeline a scanned PDF has no text layer -> page_text empty -> no parents / weaker search_coach_notes.
+   only training_plan is supported; diet_plan and recipe_book raise NotImplementedError.
+3- backend API: upload-PDF endpoint that runs ingestion as a background job with a status, and a streaming chat endpoint (stream_answer already yields chunks).
+   the DOCUMENTS lists in both ingest.py files and the input() chat loop go away.
+4- users and tenants: coach + client accounts, login, client_id taken from the logged-in user (tools already read it from the request context, not the model).
+   COACH_ID / CLIENT_ID are hardcoded ("coach_self" / "client_self"); chat thread_id = client_id means one conversation per client.
+5- pdf storage: store uploaded PDFs in object storage (S3 / GCS), the manifest keeps a local windows path today.
+6- "what do I have today": done (get_today / set_start_date, start date stored per client in the mongo "clients" collection).
+   left: use the client's timezone instead of the server date (ponytail comments in agent.py / tools.py),
+   let the coach set the start date at upload, and decide whether a new plan version resets the start date.
+7- security: scope rule + cheap guard for off-topic and prompt-injection questions (no extra agent), rate limit per client,
+   keep secrets out of code; remember that PDF content also ends up in prompts.
+
+SHOULD-HAVE FOR QUALITY
+8- fixed evaluation set: ~15 questions with their expected tool calls, run only when prompts/tools change (keeps LLM calls low).
+   run the existing _demo() self-checks under pytest (it is in requirements, but tests/ is in .gitignore).
+9- logging + tracing: replace print_step/print with logging, add LangSmith tracing for the agent.
+10- data issues: the FAQ page is stored twice (FAQS / FAQs) so every search_coach_notes wastes 2 of its 5 results; README still says the chat side isn't built.
+
+LATER (FEATURES, NOT NEEDED TO SHIP)
+- LLM-as-judge for exercise features.
+- dataset of Egyptian exercise names -> official exercise names.
+- descriptions for reference exercises + cardio reference data.
+- video transcript enrichment (youtube_transcript/ is ready, video_url is stored but unused).
+- general-question agent: probably not needed, the system prompt already handles "why" and general questions.
+- rewrite-query agent: not needed, search_coach_notes' query arg now asks for a short English query (arabic "warm-up sets" went 0.30 -> found).
+
+
+========================================================================================
+
+
+
+
+> what does rir mean
+C:\Users\SG\Agentic_Fitness_Coach\.venv\Lib\site-packages\qdrant_client\async_qdrant_remote.py:227: UserWarning: Qdrant client version 1.19.1 is incompatible with server version 1.17.1. Major versions should match and minor version difference must not exceed 1. Set check_compatibility=False to skip version check.
+  show_warning(
+RIR stands for "Reps in Reserve." It refers to how many more repetitions you could have performed before reaching muscle failure.
+------------------------------------------------------------
+🔧 search_coach_notes({'query': 'RIR meaning'})
+🪙 in 5258 (cached 1766) · out 45 (thinking 0) · total 5303 · 2 model call(s)
+------------------------------------------------------------
+> why are we choosing a specific rep range
+The coach's notes mention that you should pick weights that challenge you but still allow you to hit your reps with clean form. If you're easily exceeding the rep range, the weight is likely too light.
+
+Generally, specific rep ranges are chosen to target different training adaptations:
+*   **Lower reps (1-5):** Primarily for strength development.
+*   **Moderate reps (6-12):** A good balance for both muscle growth (hypertrophy) and strength.
+*   **Higher reps (15+):** More for muscular endurance.
+
+Your program seems to use a moderate rep range, which is effective for building muscle and strength.
+------------------------------------------------------------
+🔧 search_coach_notes({'query': 'why specific rep range'})
+🪙 in 5397 (cached 0) · out 160 (thinking 0) · total 5557 · 2 model call(s)
+------------------------------------------------------------
+> i finished my second exercise what next
+After Dips, your next exercise is Incline Dumbbell Press: 3 sets, 8-12 reps, 3-5 min rest.
+------------------------------------------------------------
+🔧 no tools
+🪙 in 2730 (cached 0) · out 31 (thinking 0) · total 2761 · 1 model call(s)
+------------------------------------------------------------
+> i finished my second exercise in day 2 whats next
+After Dips, your next exercise is Incline Dumbbell Press: 3 sets, 8-12 reps, 3-5 min rest.
+------------------------------------------------------------
+🔧 no tools
+🪙 in 2775 (cached 2619) · out 32 (thinking 0) · total 2807 · 1 model call(s)
+------------------------------------------------------------
+> how much volume of dips do i have during the week
+You have Dips on Day 2, with 4 working sets.
+------------------------------------------------------------
+🔧 list_exercises({'name': 'Dips'})
+🪙 in 6528 (cached 2619) · out 31 (thinking 0) · total 6559 · 2 model call(s)
+------------------------------------------------------------
+> how many reps do i have in total
+I can tell you the number of sets, but I can't calculate the total reps for the week as the plan provides a range (e.g., 6-12 reps) rather than a fixed number.
+------------------------------------------------------------
+🔧 no tools
+🪙 in 3590 (cached 0) · out 45 (thinking 0) · total 3635 · 1 model call(s)
+------------------------------------------------------------
+> tell me the average for the week 
+The most common rep ranges in your plan are 8-12 reps (6 exercises) and 6-12 reps (5 exercises). Other rep ranges appear less frequently.
+------------------------------------------------------------
+🔧 plan_value_counts({'field': 'reps'})
+🪙 in 7290 (cached 0) · out 55 (thinking 0) · total 7345 · 2 model call(s)
